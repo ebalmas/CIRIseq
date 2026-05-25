@@ -1,0 +1,42 @@
+Package: CIRI
+Type: Package
+Title: CIRI CRISPR Screen Analysis Pipeline
+Version: 0.1.0
+Authors@R: c(
+    person("Alessandro", "Bertero", role = c("aut")),
+    person("Maria Luisa", "Ratto",  role = c("aut", "cre"),
+           email = "ratto@example.com")
+  )
+Description: End-to-end analysis pipeline for CIRI single-cell CRISPRa/i
+    screens. Covers perturbation assignment, QC filtering, Monocle3
+    preprocessing, cluster enrichment, pseudotime statistics, and gene
+    signature scoring.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.1
+Imports:
+    dplyr,
+    tidyr,
+    stringr,
+    ggplot2,
+    scales,
+    Matrix,
+    hdf5r,
+    Seurat,
+    data.table,
+    monocle3,
+    viridis,
+    ggrepel,
+    gtools,
+    colorspace,
+    ggsignif,
+    zoo,
+    pracma,
+    quantmod
+Suggests:
+    biomaRt,
+    devtools,
+    testthat
+Remotes:
+    cole-trapnell-lab/monocle3
