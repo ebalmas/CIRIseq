@@ -1,4 +1,4 @@
-# CIRI Analysis Pipeline — Local (No Docker)
+# CIRI Analysis Pipeline — Local to add on the desired Docker
 
 ## Output folder structure
 
