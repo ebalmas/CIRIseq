@@ -1,0 +1,16 @@
+# R package build artifacts
+*.Rproj.user
+*.Rhistory
+*.RData
+*.Ruserdata
+.Rproj.user/
+src/*.o
+src/*.so
+
+# Pipeline runtime folders — data stays on your server
+Output/
+scratch/
+
+# OS
+.DS_Store
+Thumbs.db
