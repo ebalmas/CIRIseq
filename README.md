@@ -18,7 +18,8 @@ is missing.
 
 ```r
 install.packages("devtools")
-remotes::install_github("ebalmas/CIRIseq", ref = "V3")
+remotes::install_github("ebalmas/CIRIseq", ref = "V3", force = TRUE)
+library(CIRI)
 ```
 
 That's it. Only lightweight CRAN packages (`dplyr`, `ggplot2`, etc.) are
