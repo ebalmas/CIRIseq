@@ -13,30 +13,33 @@ Description: End-to-end analysis pipeline for CIRI single-cell CRISPRa/i
     signature scoring.
 License: MIT + file LICENSE
 Encoding: UTF-8
-LazyData: true
 RoxygenNote: 7.3.1
+Depends:
+    R (>= 4.1.0)
 Imports:
-    dplyr,
+    dplyr (>= 1.1.0),
     tidyr,
     stringr,
     ggplot2,
     scales,
     Matrix,
-    hdf5r,
-    Seurat,
-    data.table,
-    monocle3,
-    viridis,
     ggrepel,
-    igraph,
+    viridis,
     tibble,
+    rlang,
     methods,
     utils,
     stats
 Suggests:
+    hdf5r,
+    Seurat,
+    data.table,
+    monocle3,
+    igraph,
     biomaRt,
+    BiocManager,
     devtools,
-    testthat,
-    BiocManager
+    testthat
+SystemRequirements: HDF5 (>= 1.8.13) for reading 10x .h5 files
 Remotes:
     cole-trapnell-lab/monocle3

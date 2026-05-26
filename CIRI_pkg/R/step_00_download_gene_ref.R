@@ -1,7 +1,3 @@
-# =============================================================================
-# CIRI — Step 00: Download Ensembl Protein-Coding Gene Reference
-# =============================================================================
-
 #' Download Ensembl protein-coding gene reference
 #'
 #' Run once before the pipeline. Downloads human protein-coding genes from
@@ -9,36 +5,31 @@
 #'
 #' @param output_root Top-level output directory. Default \code{"Output"}.
 #' @param sample      Experiment name used in the output folder name.
-#'                    Default \code{"CIRI"}.
 #'
 #' @return Invisibly returns the path to the saved CSV.
 #'
 #' @section Output structure:
 #' \preformatted{
-#' Output/
-#'   <YYMMDD>_step00_geneRef_<sample>/
-#'     csv/        ensembl_protein_coding_genes.csv
-#'     to_scratch/ ensembl_protein_coding_genes.csv
+#' Output/<YYMMDD>_step00_geneRef_<sample>/
+#'   csv/        ensembl_protein_coding_genes.csv
+#'   to_scratch/ ensembl_protein_coding_genes.csv
 #' }
 #'
 #' @examples
 #' \dontrun{
 #' ciri_step00_download_ref(output_root = "Output", sample = "AB011")
 #' }
-#'
-#' @importFrom utils write.csv
 #' @export
 ciri_step00_download_ref <- function(output_root = "Output",
                                      sample       = "CIRI") {
+  .check_bioc_pkgs("biomaRt")
+
   out <- make_out_dirs(output_root, "step00_geneRef", sample)
 
   step_banner("00", "Download Ensembl Gene Reference",
     inputs  = "Ensembl REST API (internet required)",
     outputs = file.path(out$csv, "ensembl_protein_coding_genes.csv")
   )
-
-  if (!requireNamespace("biomaRt", quietly = TRUE))
-    stop("Package 'biomaRt' is required. Install with: BiocManager::install('biomaRt')")
 
   options(timeout = 600)
   mirrors <- c("https://www.ensembl.org", "https://useast.ensembl.org",
@@ -52,21 +43,23 @@ ciri_step00_download_ref <- function(output_root = "Output",
       log_info("Connected."); break
     }, error = function(e) log_warn("  Failed: ", conditionMessage(e)))
   }
-  if (is.null(mart)) stop("Could not connect to any Ensembl mirror.")
+  if (is.null(mart)) stop("Could not connect to any Ensembl mirror.", call. = FALSE)
 
   log_info("Querying protein-coding genes ...")
   ref <- biomaRt::getBM(
     mart       = mart,
     attributes = c("ensembl_gene_id", "hgnc_symbol", "chromosome_name"),
-    filters    = "biotype", values = "protein_coding"
+    filters    = "biotype",
+    values     = "protein_coding"
   )
   ref$mix     <- ifelse(is.na(ref$hgnc_symbol) | ref$hgnc_symbol == "",
                         ref$ensembl_gene_id, ref$hgnc_symbol)
   ref$is_mito <- ref$chromosome_name == "MT"
 
   out_csv <- file.path(out$csv, "ensembl_protein_coding_genes.csv")
-  write.csv(ref, out_csv, row.names = FALSE)
-  file.copy(out_csv, file.path(out$to_scratch, "ensembl_protein_coding_genes.csv"),
+  utils::write.csv(ref, out_csv, row.names = FALSE)
+  file.copy(out_csv,
+            file.path(out$to_scratch, "ensembl_protein_coding_genes.csv"),
             overwrite = TRUE)
 
   log_info("Saved ", nrow(ref), " genes (", sum(ref$is_mito), " mito).")

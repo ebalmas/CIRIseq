@@ -8,21 +8,73 @@ statistics, and gene signature scoring.
 
 ## Installation
 
+CIRI installs quickly because heavy bioinformatics packages (`Seurat`,
+`monocle3`, `hdf5r`, `biomaRt`) are **not installed automatically**.
+They are optional dependencies — each step checks for what it needs at
+runtime and gives you a clear error with the install command if something
+is missing.
+
+### Step 1 — Install CIRI (fast, requires R ≥ 4.1)
+
 ```r
-# 1. Install BiocManager if needed
-if (!requireNamespace("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
-
-# 2. Install Bioconductor dependencies
-BiocManager::install(c("biomaRt", "SingleCellExperiment", "SummarizedExperiment"))
-
-# 3. Install Monocle3 (GitHub only — not on CRAN or Bioconductor)
-if (!requireNamespace("devtools", quietly = TRUE))
-  install.packages("devtools")
-devtools::install_github("cole-trapnell-lab/monocle3")
-
-# 4. Install CIRI
+install.packages("devtools")
 devtools::install_github("yourusername/CIRI")
+```
+
+That's it. Only lightweight CRAN packages (`dplyr`, `ggplot2`, etc.) are
+installed automatically.
+
+### Step 2 — Install the bioinformatics dependencies when you're ready
+
+```r
+library(CIRI)
+
+# See what's installed and what's missing
+check_dependencies()
+
+# Install everything at once
+install_dependencies()
+
+# Or install only what you need for specific steps
+install_dependencies(steps = "00")       # biomaRt (Ensembl reference)
+install_dependencies(steps = "01")       # hdf5r (reading .h5 files)
+install_dependencies(steps = "02")       # hdf5r + Seurat + data.table
+install_dependencies(steps = "03-08")    # monocle3 + igraph
+```
+
+`check_dependencies()` shows exactly what's ready:
+
+```
+CIRI dependency status:
+--------------------------------------------------
+  [OK]    Step 00 — Ensembl reference         ready
+  [MISS]  Step 01 — Guide assignment          missing: hdf5r
+  [MISS]  Step 02 — Filter                    missing: hdf5r, Seurat
+  [MISS]  Steps 03-08 — Monocle3              missing: monocle3, igraph
+--------------------------------------------------
+  1/4 step groups ready. Run install_dependencies() to install missing packages.
+```
+
+If you call a step before its dependency is installed, you get:
+
+```
+Error: Package 'monocle3' is required for this step but is not installed.
+Install it with: BiocManager::install('monocle3')
+```
+
+### hdf5r system requirement
+
+`hdf5r` requires the HDF5 C library on your system **before** `install_dependencies()`:
+
+```bash
+# macOS
+brew install hdf5
+
+# Ubuntu / Debian
+sudo apt-get install libhdf5-dev
+
+# Fedora / RHEL
+sudo dnf install hdf5-devel
 ```
 
 ---

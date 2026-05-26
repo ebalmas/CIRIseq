@@ -60,6 +60,8 @@ ciri_step01_assignment <- function(data_dir,
                                    threshold_a  = -1,
                                    threshold_i  = -1) {
 
+  .check_cran_pkgs("hdf5r")
+
   out <- make_out_dirs(output_root, "step01_assignment", sample)
   data_dir <- normalizePath(data_dir, mustWork = TRUE)
 

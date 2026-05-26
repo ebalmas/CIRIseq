@@ -3,19 +3,37 @@
 # =============================================================================
 
 # ---------------------------------------------------------------------------
+# requireNamespace guard — called at the top of each step function
+# to give a clear error if a heavy dependency is not installed
+# ---------------------------------------------------------------------------
+.check_pkg <- function(pkg, install_hint) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    stop(
+      "Package '", pkg, "' is required for this step but is not installed.\n",
+      "Install it with: ", install_hint,
+      call. = FALSE
+    )
+  }
+}
+
+.check_bioc_pkgs <- function(...) {
+  pkgs <- c(...)
+  for (pkg in pkgs) {
+    .check_pkg(pkg, paste0("BiocManager::install('", pkg, "')"))
+  }
+}
+
+.check_cran_pkgs <- function(...) {
+  pkgs <- c(...)
+  for (pkg in pkgs) {
+    .check_pkg(pkg, paste0("install.packages('", pkg, "')"))
+  }
+}
+
+# ---------------------------------------------------------------------------
 # Output folder structure
 # ---------------------------------------------------------------------------
 
-#' Create dated output subdirectory tree for one step.
-#'
-#' Structure:
-#'   <output_root>/<YYMMDD>_<step_tag>_<sample>/
-#'     csv/  plots/  stats/  R_objects/  to_scratch/
-#'
-#' @param output_root Top-level Output/ directory.
-#' @param step_tag    Short step id, e.g. "step01_assignment".
-#' @param sample      Experiment name, e.g. "AB011".
-#' @return Named list of directory paths.
 #' @keywords internal
 make_out_dirs <- function(output_root, step_tag, sample = "CIRI") {
   date_str <- format(Sys.Date(), "%y%m%d")
@@ -37,41 +55,35 @@ make_out_dirs <- function(output_root, step_tag, sample = "CIRI") {
 # scratch/ resolution
 # ---------------------------------------------------------------------------
 
-#' Find the scratch/ folder for a given step and sample.
-#'
-#' Reads from <output_root>/<date>_<step_tag>_<sample>/to_scratch/
-#' unless the user overrides with an explicit scratch path.
-#'
-#' @param scratch     Explicit path (if not NULL, returned as-is).
-#' @param output_root Top-level Output/ directory.
-#' @param step_tag    Step tag of the PREVIOUS step.
-#' @param sample      Sample name.
-#' @return Absolute path to the to_scratch/ directory.
 #' @keywords internal
 resolve_scratch <- function(scratch = NULL, output_root, step_tag, sample) {
   if (!is.null(scratch)) {
     if (!dir.exists(scratch))
-      stop("scratch directory not found: ", scratch)
+      stop("scratch directory not found: ", scratch, call. = FALSE)
     return(scratch)
   }
   hits    <- list.dirs(output_root, recursive = FALSE)
   pattern <- paste0("_", step_tag, "_", sample, "$")
   hits    <- hits[grepl(pattern, hits)]
   if (!length(hits))
-    stop("No output folder found for step '", step_tag, "' sample '", sample,
-         "' under ", output_root,
-         "\nRun the previous step first, or pass scratch= explicitly.")
+    stop(
+      "No output folder found for step '", step_tag, "' sample '", sample,
+      "' under ", output_root,
+      "\nRun the previous step first, or pass scratch= explicitly.",
+      call. = FALSE
+    )
   to_scratch <- file.path(sort(hits, decreasing = TRUE)[1], "to_scratch")
   if (!dir.exists(to_scratch))
-    stop("to_scratch/ not found in: ", sort(hits, decreasing = TRUE)[1])
+    stop("to_scratch/ not found in: ", sort(hits, decreasing = TRUE)[1],
+         call. = FALSE)
   to_scratch
 }
 
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-log_info  <- function(...) message("[INFO]  ", ...)
-log_warn  <- function(...) message("[WARN]  ", ...)
+log_info <- function(...) message("[INFO]  ", ...)
+log_warn <- function(...) message("[WARN]  ", ...)
 
 # ---------------------------------------------------------------------------
 # Step banner
@@ -91,7 +103,7 @@ step_banner <- function(n, title, inputs = NULL, outputs = NULL) {
 # Load .RData — returns first object regardless of variable name
 # ---------------------------------------------------------------------------
 load_rdata <- function(path) {
-  if (!file.exists(path)) stop("File not found: ", path)
+  if (!file.exists(path)) stop("File not found: ", path, call. = FALSE)
   env <- new.env()
   load(path, envir = env)
   env[[ls(env)[1]]]
@@ -104,7 +116,7 @@ assert_file <- function(path, hint = NULL) {
   if (!file.exists(path)) {
     msg <- paste("Required file not found:", path)
     if (!is.null(hint)) msg <- paste0(msg, "\nHint: ", hint)
-    stop(msg)
+    stop(msg, call. = FALSE)
   }
   invisible(path)
 }

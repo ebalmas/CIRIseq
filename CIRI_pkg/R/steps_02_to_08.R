@@ -42,6 +42,9 @@ ciri_step02_filter <- function(data_dir,
                                remove_mt    = TRUE,
                                remove_rb    = TRUE) {
 
+  .check_cran_pkgs("hdf5r", "data.table", "Seurat")
+  .check_bioc_pkgs("monocle3")
+
   out      <- make_out_dirs(output_root, "step02_filter", sample)
   data_dir <- normalizePath(data_dir, mustWork = TRUE)
 
@@ -160,6 +163,8 @@ ciri_step03_load <- function(sample       = "CIRI",
                              n_dims       = 100L,
                              seed         = 1234597698L) {
 
+  .check_bioc_pkgs("monocle3")
+
   out <- make_out_dirs(output_root, "step03_load", sample)
   set.seed(seed)
   mat_path <- file.path(scratch_dir, "annotated_matrix.csv")
@@ -253,6 +258,8 @@ ciri_step04_validation <- function(sample       = "CIRI",
                                    control_i    = "NTCa-NA",
                                    min_cells    = 5L) {
 
+  .check_bioc_pkgs("monocle3")
+
   out      <- make_out_dirs(output_root, "step04_validation", sample)
   cds_path <- file.path(scratch_dir, "processed_cds.RData")
 
@@ -344,6 +351,8 @@ ciri_step05_enrichment <- function(clusters,
                                    output_root  = "Output",
                                    scratch_dir  = "scratch",
                                    min_cells    = 10L) {
+
+  .check_bioc_pkgs("monocle3")
 
   out         <- make_out_dirs(output_root, "step05_enrichment", sample)
   cds_path    <- file.path(scratch_dir, "processed_cds.RData")
@@ -439,6 +448,9 @@ ciri_step06_trajectory <- function(clusters,
                                    n_dims       = 50L,
                                    seed         = 42L) {
 
+  .check_bioc_pkgs("monocle3")
+  .check_cran_pkgs("igraph")
+
   out      <- make_out_dirs(output_root, "step06_trajectory", sample)
   cds_path <- file.path(scratch_dir, "processed_cds.RData")
   set.seed(seed)
@@ -533,6 +545,8 @@ ciri_step07_pseudotime <- function(group,
                                    min_cells      = 8L,
                                    run_per_sample = FALSE,
                                    ecdf_top_n     = 10L) {
+
+  .check_bioc_pkgs("monocle3")
 
   out      <- make_out_dirs(output_root, "step07_pseudotime", sample)
   cds_path <- file.path(scratch_dir, paste0("processed_cds_", group, ".RData"))
@@ -641,6 +655,8 @@ ciri_step08_signatures <- function(group,
                                    output_root  = "Output",
                                    scratch_dir  = "scratch",
                                    signatures   = NULL) {
+
+  .check_bioc_pkgs("monocle3")
 
   out      <- make_out_dirs(output_root, "step08_signatures", sample)
   cds_path <- file.path(scratch_dir, paste0("processed_cds_", group, ".RData"))
