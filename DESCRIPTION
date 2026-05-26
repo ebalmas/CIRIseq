@@ -38,8 +38,6 @@ Suggests:
     igraph,
     biomaRt,
     BiocManager,
+    remotes,
     devtools,
     testthat
-SystemRequirements: HDF5 (>= 1.8.13) for reading 10x .h5 files
-Remotes:
-    cole-trapnell-lab/monocle3
