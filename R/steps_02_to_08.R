@@ -291,9 +291,34 @@ ciri_step04_validation <- function(sample       = "CIRI",
     gene  <- targets$gene[i]; class <- targets$class[i]
     if (!gene %in% rownames(norm_mat)) { log_warn("Gene not in matrix: ", gene); next }
     expr      <- norm_mat[gene, ]
-    perturbed <- if (class == "CRISPRa") {cell_df$nomi[!is.na(cell_df$gene_a) & cell_df$gene_a == gene]} else {cell_df$nomi[!is.na(cell_df$gene_i) & cell_df$gene_i == gene]}
-    control   <- if (class == "CRISPRa") cell_df$nomi[cell_df$gene_comb == control_a] else cell_df$nomi[cell_df$gene_comb == control_i] if (length(perturbed) < min_cells || length(control) < min_cells) {log_warn("Too few cells for ", gene, " — skipped"); next}
-    df <- dplyr::bind_rows(
+    perturbed <- if (class == "CRISPRa") {
+
+  cell_df$nomi[!is.na(cell_df$gene_a) & cell_df$gene_a == gene]
+
+} else {
+
+  cell_df$nomi[!is.na(cell_df$gene_i) & cell_df$gene_i == gene]
+
+}
+
+control <- if (class == "CRISPRa") {
+
+  cell_df$nomi[cell_df$gene_comb == control_a]
+
+} else {
+
+  cell_df$nomi[cell_df$gene_comb == control_i]
+
+}
+
+if (length(perturbed) < min_cells || length(control) < min_cells) {
+
+  log_warn("Too few cells for ", gene, " — skipped")
+
+  next
+
+}
+     df <- dplyr::bind_rows(
       data.frame(expr = as.numeric(expr[perturbed]), group = paste0(gene, " perturbed")),
       data.frame(expr = as.numeric(expr[control]),   group = "Control"))
     ggplot2::ggsave(file.path(out$plots, paste0("validation_violin_", gene, ".pdf")),
