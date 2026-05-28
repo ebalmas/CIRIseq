@@ -1,16 +1,17 @@
 Package: CIRI
 Type: Package
 Title: CIRI CRISPR Screen Analysis Pipeline
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: c(
     person("Alessandro", "Bertero", role = c("aut")),
     person("Maria Luisa", "Ratto",  role = c("aut", "cre"),
            email = "ratto@example.com")
   )
 Description: End-to-end analysis pipeline for CIRI single-cell CRISPRa/i
-    screens. Covers perturbation assignment, QC filtering, Monocle3
-    preprocessing, cluster enrichment, pseudotime statistics, and gene
-    signature scoring.
+    screens. Covers guide name harmonisation, perturbation assignment with
+    KDE-based auto-thresholding, Seurat-based QC, Monocle3 preprocessing,
+    cluster enrichment, pseudotime statistics, and gene signature scoring.
+    Standalone scripts for QC and filtering are included in inst/scripts/.
 License: MIT + file LICENSE
 Encoding: UTF-8
 RoxygenNote: 7.3.1
@@ -33,10 +34,12 @@ Imports:
 Suggests:
     hdf5r,
     Seurat,
+    SeuratObject,
     data.table,
     monocle3,
     igraph,
     biomaRt,
+    patchwork,
     BiocManager,
     remotes,
     devtools,

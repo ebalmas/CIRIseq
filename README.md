@@ -1,114 +1,97 @@
 # CIRI — Single-Cell CRISPRa/i Screen Analysis Pipeline
 
-An R package for end-to-end analysis of CIRI screens: perturbation assignment,
-QC filtering, Monocle3 preprocessing, cluster enrichment, pseudotime
+End-to-end R package for CIRI screens: guide name harmonisation, perturbation
+assignment, Seurat QC, Monocle3 preprocessing, cluster enrichment, pseudotime
 statistics, and gene signature scoring.
 
 ---
 
 ## Installation
 
-CIRI installs quickly because heavy bioinformatics packages (`Seurat`,
-`monocle3`, `hdf5r`, `biomaRt`) are **not installed automatically**.
-They are optional dependencies — each step checks for what it needs at
-runtime and gives you a clear error with the install command if something
-is missing.
-
-### Step 1 — Install CIRI (fast, requires R ≥ 4.1)
+CIRI installs in seconds — heavy packages (`Seurat`, `monocle3`, `hdf5r`) are
+optional and only loaded when the step that needs them is called.
 
 ```r
 install.packages("devtools")
-remotes::install_github("ebalmas/CIRIseq", ref = "V3", force = TRUE)
-library(CIRI)
-```
-
-That's it. Only lightweight CRAN packages (`dplyr`, `ggplot2`, etc.) are
-installed automatically.
-
-### Step 2 — Install the bioinformatics dependencies when you're ready
-
-```r
+devtools::install_github("ebalmas/CIRIseq", ref = "V3")
 library(CIRI)
 
-# See what's installed and what's missing
+# Check what optional dependencies are installed
 check_dependencies()
 
 # Install everything at once
 install_dependencies()
 
-# Or install only what you need for specific steps
-install_dependencies(steps = "00")       # biomaRt (Ensembl reference)
-install_dependencies(steps = "01")       # hdf5r (reading .h5 files)
-install_dependencies(steps = "02")       # hdf5r + Seurat + data.table
-install_dependencies(steps = "03-08")    # monocle3 + igraph
+# Or install per step
+install_dependencies(steps = "01")      # hdf5r  (H5 reading)
+install_dependencies(steps = "02")      # hdf5r + Seurat + data.table
+install_dependencies(steps = "03-08")   # monocle3 + igraph
+install_dependencies(steps = "00")      # biomaRt (Ensembl reference)
 ```
 
-`check_dependencies()` shows exactly what's ready:
-
-```
-CIRI dependency status:
---------------------------------------------------
-  [OK]    Step 00 — Ensembl reference         ready
-  [MISS]  Step 01 — Guide assignment          missing: hdf5r
-  [MISS]  Step 02 — Filter                    missing: hdf5r, Seurat
-  [MISS]  Steps 03-08 — Monocle3              missing: monocle3, igraph
---------------------------------------------------
-  1/4 step groups ready. Run install_dependencies() to install missing packages.
-```
-
-If you call a step before its dependency is installed, you get:
-
-```
-Error: Package 'monocle3' is required for this step but is not installed.
-Install it with: BiocManager::install('monocle3')
-```
-
-### hdf5r system requirement
-
-`hdf5r` requires the HDF5 C library on your system **before** `install_dependencies()`:
+### hdf5r system library (required before installing hdf5r)
 
 ```bash
-# macOS
-brew install hdf5
-
-# Ubuntu / Debian
-sudo apt-get install libhdf5-dev
-
-# Fedora / RHEL
-sudo dnf install hdf5-devel
+brew install hdf5           # macOS
+sudo apt-get install libhdf5-dev   # Ubuntu/Debian
+sudo dnf install hdf5-devel        # Fedora/RHEL
 ```
 
 ---
 
-## Workflow overview
+## Pipeline overview
 
 ```
-Output/                          ← dated run folders (never edit manually)
-  <YYMMDD>_step01_assignment_AB011/
-    csv/   plots/   stats/   R_objects/
-    to_scratch/                  ← files ready for the next step
-
-scratch/                         ← staging area YOU control
-  annotation_data.csv            ← only here after ciri_promote_scratch()
+Pre-step  harmonise_guide_names.R    fix guide name mismatches vs H5
+Step 00   ciri_step00_download_ref() download Ensembl protein-coding genes
+Step 01   ciri_step01_assignment()   assign CRISPRa/i guides to cells
+Step 02a  ciri_step02_annotate.R     Seurat object + QC plots (standalone)
+Step 02b  ciri_step02_filter.R       filter cells + Monocle3 CDS (standalone)
+Step 03   ciri_step03_load()         (alternative to 02b for CSV-based input)
+Step 04   ciri_step04_validation()   target knockdown/activation validation
+Step 05   ciri_step05_enrichment()   cluster enrichment analysis
+Step 06   ciri_step06_trajectory()   subclustering + pseudotime trajectory
+Step 07   ciri_step07_pseudotime()   KS test on pseudotime distributions
+Step 08   ciri_step08_signatures()   gene set signature scoring
 ```
 
-**The key idea — deliberate checkpoints:**
+Steps 02a and 02b are **standalone scripts** (not package functions) because
+the Seurat QC step is intentionally kept separate — you can substitute your
+own QC pipeline before the Monocle3 steps.
 
-```r
-# 1. Run a step
-ciri_step01_assignment(data_dir = "/data/AB011", matrix = "matrix.h5", sample = "AB011")
+---
 
-# 2. Inspect the output in Output/<date>_step01_assignment_AB011/
-#    check plots/, stats/, csv/
+## Folder structure
 
-# 3. When happy, promote to scratch/ so the next step can read it
-ciri_promote_scratch("step01_assignment", sample = "AB011")
-
-# 4. Run the next step — reads automatically from scratch/
-ciri_step02_filter(data_dir = "/data/AB011", matrix = "matrix.h5", sample = "AB011")
+```
+my_analysis/
+├── scratch/                          ← staging area YOU control
+│   ├── filtered_feature_bc_matrix.h5
+│   ├── aggregation.csv
+│   ├── guides_2.csv
+│   ├── guides_harmonised.csv         ← produced by pre-step
+│   ├── protospacer_calls_per_cell.csv
+│   └── scratch_protein_coding_genes.RData   (optional)
+├── Output/                           ← dated run folders (auto-created)
+│   ├── QC/
+│   │   └── <YYMMDD>/
+│   │       ├── csv/   ribomito/   filtering/   R_objects/
+│   │       └── to_scratch/
+│   ├── monocle/
+│   │   └── <YYMMDD>/
+│   │       ├── umap/   R_objects/   dotplot/
+│   │       └── to_scratch/
+│   └── <YYMMDD>_step01_assignment_<sample>/
+│       ├── csv/   plots/   stats/   R_objects/
+│       └── to_scratch/
+├── harmonise_guide_names.R           ← copied by ciri_copy_scripts()
+├── ciri_step02_annotate.R            ← copied by ciri_copy_scripts()
+├── ciri_step02_filter.R              ← copied by ciri_copy_scripts()
+└── run_analysis_AB011.R              ← your copy of the template
 ```
 
-Nothing moves to `scratch/` automatically. You decide when you are happy.
+Add `Output/` and `scratch/*.h5` to `.gitignore`. Commit your
+`run_analysis_<experiment>.R` — it is your lab notebook.
 
 ---
 
@@ -117,161 +100,185 @@ Nothing moves to `scratch/` automatically. You decide when you are happy.
 ```r
 library(CIRI)
 
-# Copy the analysis template to your working directory
-file.copy(
-  system.file("run_analysis_template.R", package = "CIRI"),
-  "run_analysis_AB011.R"
-)
-```
+# 1. Copy scripts and analysis template to your working directory
+ciri_copy_scripts()
+file.copy(system.file("run_analysis_template.R", package = "CIRI"),
+          "run_analysis_AB011.R")
 
-Open `run_analysis_AB011.R`, fill in your paths, and run each block one at a time.
-
-If you are working directly from the cloned repo (no install), source locally instead:
-
-```r
-invisible(lapply(list.files("R", pattern = "\\.R$", full.names = TRUE), source))
+# 2. Open run_analysis_AB011.R and fill in DATA_DIR, SAMPLE, etc.
+# 3. Run each block one at a time from the RStudio console.
 ```
 
 ---
 
-## Functions
+## The scratch/ checkpoint system
 
-### Pipeline steps
+Nothing moves to `scratch/` automatically. After each step you inspect the
+output and decide when to promote:
 
-| Function | Reads from | Writes to |
-|---|---|---|
-| `ciri_step00_download_ref()` | Ensembl API | `to_scratch/ensembl_protein_coding_genes.csv` |
-| `ciri_step01_assignment()` | `data_dir/` (H5 + guides.csv) | `to_scratch/annotation_data.csv` |
-| `ciri_step02_filter()` | `scratch/` + `data_dir/` (H5) | `to_scratch/annotated_matrix.csv` |
-| `ciri_step03_load()` | `scratch/` | `to_scratch/processed_cds.RData` |
-| `ciri_step04_validation()` | `scratch/` | plots + csv only (terminal) |
-| `ciri_step05_enrichment()` | `scratch/` | plots + csv only (terminal) |
-| `ciri_step06_trajectory()` | `scratch/` | `to_scratch/processed_cds_<group>.RData` + `pseudotime_<group>.csv` |
-| `ciri_step07_pseudotime()` | `scratch/` | plots + csv only (terminal) |
-| `ciri_step08_signatures()` | `scratch/` | plots + csv only (terminal) |
+```r
+ciri_step01_assignment(data_dir = "/data", matrix = "matrix.h5", sample = "AB011")
 
-### Scratch management
+# Inspect Output/<date>_step01_assignment_AB011/plots/ and stats/
+# Happy with the result? Promote it:
+ciri_promote_scratch("step01_assignment", sample = "AB011")
+
+# Next step reads from scratch/ automatically
+```
+
+Helper functions:
 
 | Function | Description |
 |---|---|
-| `ciri_promote_scratch()` | Copy a step's `to_scratch/` → `scratch/` (your checkpoint) |
-| `ciri_list_scratch()` | List files ready in a step's `to_scratch/` |
+| `ciri_promote_scratch()` | Copy `to_scratch/` → `scratch/` |
+| `ciri_list_scratch()` | List what's ready in a step's `to_scratch/` |
 | `ciri_scratch_status()` | Show current `scratch/` contents |
-| `ciri_clear_scratch()` | Clear `scratch/` before a fresh run (requires `confirm = TRUE`) |
+| `ciri_clear_scratch()` | Clear `scratch/` (requires `confirm = TRUE`) |
+| `ciri_copy_scripts()` | Copy standalone QC scripts to working directory |
 
 ---
 
-## Output structure
+## Step 01 — guide name harmonisation
 
-Each step writes to a dated folder:
+CellRanger collapses guide replicate names: `ATF7IP_1A` + `ATF7IP_1B`
+become `ATF7IP_1` in the H5. Run `harmonise_guide_names.R` once to
+produce a `guides_harmonised.csv` that matches the H5 exactly.
 
+```bash
+Rscript harmonise_guide_names.R \
+  --guides      scratch/guides_2.csv \
+  --protospacer scratch/protospacer_calls_per_cell.csv \
+  --out         scratch/guides_harmonised.csv
 ```
-Output/<YYMMDD>_<step>_<sample>/
-  csv/          tables (.csv)
-  plots/        figures (.pdf)
-  stats/        text summaries / run logs
-  R_objects/    .RData objects (permanent archive)
-  to_scratch/   files consumed by the next step
+
+Inspect `scratch/name_mapping.csv` to verify all guides matched.
+
+### Auto-thresholding
+
+When `threshold_a = -1` (default), the threshold is auto-detected using the
+first valley in the KDE of per-cell fixed-guide UMI sums — the dip between
+the noise peak (cells that didn't receive the fixed guide) and the signal
+peak (cells that did).
+
+Two diagnostic plots are saved to `plots/`:
+- `threshold_kde_CRISPRa.pdf`
+- `threshold_kde_CRISPRi.pdf`
+
+If the red dashed line lands in the wrong place, pass the threshold manually:
+
+```r
+ciri_step01_assignment(..., threshold_a = 140, threshold_i = 50)
 ```
 
-`to_scratch/` is populated automatically. Use `ciri_promote_scratch()` to move
-files into `scratch/` when you are satisfied with the output. Nothing in
-`scratch/` is changed without your explicit action.
+---
 
-Add `Output/` and `scratch/` to `.gitignore`. Commit `R/`, `inst/`,
-`DESCRIPTION`, `NAMESPACE`, and your filled `run_analysis_<experiment>.R` files.
+## Step 02 — QC and filtering (standalone scripts)
+
+### 02a — Annotate & QC plots
+
+```bash
+Rscript ciri_step02_annotate.R \
+  --data_dir /path/to/data \
+  --sample   AB011 \
+  --mito_hi  15  --mito_lo 1  --ribo_lo 3 \
+  --nGene_lo 300 --nGene_hi 7000 --nUMI_lo 100
+```
+
+Threshold values are shown as **dotted lines only** — no cells are removed.
+Inspect the PDFs in `Output/QC/<date>/ribomito/` then decide your real cuts.
+
+### 02b — Filter + Monocle3 (3 runs)
+
+**Run 1** — apply thresholds, build CDS at 7 resolutions:
+```bash
+Rscript ciri_step02_filter.R \
+  --sample   AB011 \
+  --mito_hi  10  --mito_lo 0  --ribo_lo 1 \
+  --nGene_lo 300 --nGene_hi 7000 --nUMI_lo 100
+```
+→ Inspect knee plot (`_variance_knee_plot_dim30.png`)
+
+**Run 2** — if knee plot says more dims needed:
+```bash
+Rscript ciri_step02_filter.R --sample AB011 --num_dim 50 [+ same thresholds]
+```
+→ Inspect 7 UMAP PDFs (`_cds_6_` = fewest clusters … `_cds_1_` = most)
+
+**Run 3** — finalise chosen resolution:
+```bash
+Rscript ciri_step02_filter.R \
+  --sample AB011 --chosen_cds cds_3 --num_dim 30 \
+  --mito_hi 10 --mito_lo 0 --ribo_lo 1 \
+  --nGene_lo 300 --nGene_hi 7000 --nUMI_lo 100
+```
 
 ---
 
 ## Parameter reference
 
 ### `ciri_step01_assignment()`
-| Parameter | Default | Description |
-|---|---|---|
-| `data_dir` | required | Folder with H5 matrix and guides.csv |
-| `matrix` | required | H5 filename |
-| `sample` | `"CIRI"` | Experiment name (used in output folder) |
-| `output_root` | `"Output"` | Top-level output directory |
-| `guides` | `"guides.csv"` | Guide annotation CSV (no header: feature, type, fixed) |
-| `strategy` | `1` | `1` = single variable guide; `2` = dual variable guides |
-| `threshold_a` | `-1` | CRISPRa UMI threshold; `-1` = auto-detect via KDE valley |
-| `threshold_i` | `-1` | CRISPRi UMI threshold; `-1` = auto-detect via KDE valley |
 
-### `ciri_step02_filter()`
 | Parameter | Default | Description |
 |---|---|---|
-| `data_dir` | required | Folder with H5 matrix |
+| `data_dir` | required | Folder with H5 matrix and guides CSV |
 | `matrix` | required | H5 filename |
+| `guides` | `"guides.csv"` | Guide annotation CSV — use `guides_harmonised.csv` |
 | `sample` | `"CIRI"` | Experiment name |
-| `scratch_dir` | `"scratch"` | Staging area (populated by `ciri_promote_scratch()`) |
-| `gene_ref` | `NULL` | Path to `ensembl_protein_coding_genes.csv`; if `NULL`, resolved from `scratch/` |
-| `min_genes` | `250` | Min detected genes per cell |
-| `min_umis` | `3` | Min total UMIs per gene |
-| `remove_mt` | `TRUE` | Remove mitochondrial genes (`^MT-`) |
-| `remove_rb` | `TRUE` | Remove ribosomal genes (`^RPS\|^RPL`) |
+| `strategy` | `1` | `1` = single arm; `2` = CIRI dual arm (CRISPRa AND CRISPRi) |
+| `threshold_a` | `-1` | CRISPRa UMI threshold; `-1` = auto KDE |
+| `threshold_i` | `-1` | CRISPRi UMI threshold; `-1` = auto KDE |
 
-### `ciri_step03_load()`
-| Parameter | Default | Description |
+### `ciri_step02_filter.R` (standalone)
+
+| Argument | Default | Description |
 |---|---|---|
-| `sample` | `"CIRI"` | Experiment name |
-| `scratch_dir` | `"scratch"` | Staging area |
-| `resolution` | `5e-5` | Leiden clustering resolution (increase → more clusters) |
-| `n_dims` | `100` | PCA dimensions |
-| `seed` | `1234597698` | Random seed |
+| `--mito_lo/hi` | `0` / `10` | percent.mt bounds |
+| `--ribo_lo` | `1` | percent.ribo lower bound |
+| `--nGene_lo/hi` | `300` / `7000` | nFeature_RNA bounds |
+| `--nUMI_lo` | `100` | nCount_RNA lower bound |
+| `--num_dim` | `30` | PCA dimensions for Monocle3 |
+| `--chosen_cds` | `cds_3` | Which of the 7 resolutions to finalise |
 
 ### `ciri_step06_trajectory()`
-| Parameter | Default | Description |
-|---|---|---|
-| `clusters` | required | Cluster ID(s) to subset, character vector, e.g. `"5"` or `c("3","4")` |
-| `root_gene` | required | Gene marking the trajectory start (highest-expression node) |
-| `group` | required | Short lineage name used in output filenames, e.g. `"muscle"` |
-| `resolution` | `1e-3` | Re-clustering resolution within the subset |
-| `n_dims` | `50` | PCA dimensions for the subset |
-| `seed` | `42` | Random seed |
 
-### `ciri_step07_pseudotime()`
 | Parameter | Default | Description |
 |---|---|---|
-| `group` | required | Group name matching `ciri_step06_trajectory()` |
-| `control` | required | Control `gene_comb` string, e.g. `"NTCa-NA"` |
-| `min_cells` | `8` | Min cells per perturbation to run KS test |
-| `run_per_sample` | `FALSE` | Also run analysis separately per sample |
-| `ecdf_top_n` | `10` | Number of top hits to save as ECDF plots |
-
-### `ciri_step08_signatures()`
-| Parameter | Default | Description |
-|---|---|---|
-| `group` | required | Group name matching `ciri_step06_trajectory()` |
-| `signatures` | `NULL` | Named list of gene vectors; `NULL` uses built-in myogenic signatures |
+| `clusters` | required | Cluster ID(s), e.g. `"5"` or `c("3","4")` |
+| `root_gene` | required | Gene highest at trajectory start |
+| `group` | required | Lineage name, e.g. `"muscle"` |
+| `resolution` | `1e-3` | Sub-clustering resolution |
+| `n_dims` | `50` | PCA dimensions for subset |
 
 ---
 
 ## Guides CSV format
 
-No header. Three columns: `feature`, `type` (`a` or `i`), `fixed` (`f` = fixed guide, `v` = variable guide).
+No header. Three columns: `feature`, `type` (`a`/`i`), `fixed` (`f`/`v`).
 
 ```
-NTCa_1A,a,f
-NTCa_1B,a,f
-NTCi_1A,i,f
-NTCi_1B,i,f
-SOX2_g1,a,v
-SOX2_g2,a,v
-CTCF_g1,i,v
-CTCF_g2,i,v
+MYOD_1,a,f          ← fixed CRISPRa (barcoding guide)
+MYOD_2,a,f
+NANOG,i,f           ← fixed CRISPRi (barcoding guide)
+OCT4,i,f
+SOX2,i,f
+BAF60C_1,a,v        ← variable CRISPRa (perturbation guide)
+BAF60C_2,a,v
+CTCF_1,i,v          ← variable CRISPRi (perturbation guide)
+NTCa,a,v            ← non-targeting control
+NTCi,i,v
 ```
+
+Use `guides_harmonised.csv` (from `harmonise_guide_names.R`) with Step 01,
+not the original guides CSV — the names must match exactly what is in the H5.
 
 ---
 
 ## Key fixes vs original pipeline
 
-**Mitochondrial gene removal:** MT-encoded genes (e.g. `MT-CO1`) are classified as
-`protein_coding` by Ensembl biotype and survive the `biomaRt` filter in the original
-`anno_filter.R`. `ciri_step02_filter()` explicitly removes `^MT-` genes *after*
-the protein-coding filter, controlled by `remove_mt = TRUE/FALSE`.
-
-**Duplicate protein-coding filter call** in the original `anno_filter.R` collapsed to one.
-
-**Ensembl connectivity:** `ciri_step00_download_ref()` tries four mirrors in sequence
-(`www`, `useast`, `uswest`, `asia`) instead of one, and also downloads
-`chromosome_name` to flag mitochondrial genes in the reference.
+| Issue | Fix |
+|---|---|
+| Mitochondrial genes survive protein-coding filter | `^MT-` genes explicitly removed after biomaRt filter |
+| Guide name mismatch (H5 uses collapsed names) | `harmonise_guide_names.R` pre-step |
+| `GetAssayData(slot=)` defunct in Seurat v5 | Updated to `layer=` throughout |
+| `Remotes:` field forced monocle3 install | Removed; users install via `install_dependencies()` |
+| NAMESPACE multi-line `importFrom` broke install | One `importFrom` per line |
