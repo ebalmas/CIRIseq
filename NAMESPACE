@@ -2,6 +2,7 @@
 
 export(install_dependencies)
 export(check_dependencies)
+export(ciri_harmonise_guides)
 export(ciri_step00_download_ref)
 export(ciri_step01_assignment)
 export(ciri_step02_filter)

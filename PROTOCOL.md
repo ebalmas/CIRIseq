@@ -94,7 +94,17 @@ CellRanger collapses guide replicate names in the H5 (e.g. `ATF7IP_1A` +
 `ATF7IP_1B` → `ATF7IP_1`). This step produces a corrected guides CSV that
 matches the H5 exactly.
 
-**Run from the RStudio Terminal** (not the console):
+**From the RStudio console (recommended):**
+
+```r
+ciri_harmonise_guides(
+  guides_path      = "scratch/guides_2.csv",
+  protospacer_path = "scratch/protospacer_calls_per_cell.csv",
+  out_path         = "scratch/guides_harmonised.csv"
+)
+```
+
+**Or from the RStudio Terminal (standalone script):**
 
 ```bash
 Rscript harmonise_guide_names.R \

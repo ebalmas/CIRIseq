@@ -42,7 +42,7 @@ sudo dnf install hdf5-devel        # Fedora/RHEL
 ## Pipeline overview
 
 ```
-Pre-step  harmonise_guide_names.R    fix guide name mismatches vs H5
+Pre-step  ciri_harmonise_guides()      fix guide name mismatches vs H5
 Step 00   ciri_step00_download_ref() download Ensembl protein-coding genes
 Step 01   ciri_step01_assignment()   assign CRISPRa/i guides to cells
 Step 02a  ciri_step02_annotate.R     Seurat object + QC plots (standalone)
@@ -141,8 +141,18 @@ Helper functions:
 ## Step 01 — guide name harmonisation
 
 CellRanger collapses guide replicate names: `ATF7IP_1A` + `ATF7IP_1B`
-become `ATF7IP_1` in the H5. Run `harmonise_guide_names.R` once to
+become `ATF7IP_1` in the H5. Run `ciri_harmonise_guides()` once to
 produce a `guides_harmonised.csv` that matches the H5 exactly.
+
+```r
+ciri_harmonise_guides(
+  guides_path      = "scratch/guides_2.csv",
+  protospacer_path = "scratch/protospacer_calls_per_cell.csv",
+  out_path         = "scratch/guides_harmonised.csv"
+)
+```
+
+Or from the terminal using the standalone script:
 
 ```bash
 Rscript harmonise_guide_names.R \

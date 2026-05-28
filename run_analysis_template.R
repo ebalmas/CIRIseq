@@ -33,20 +33,17 @@ SCRATCH_DIR <- "scratch"
 # PRE-STEP — Harmonise guide names (run ONCE before Step 01)
 # =============================================================================
 # CellRanger collapses guide replicate names (e.g. ATF7IP_1A + ATF7IP_1B
-# become ATF7IP_1 in the H5). This script maps your guides.csv to the
-# names actually present in the H5 so Step 01 can match them correctly.
+# become ATF7IP_1 in the H5). This maps your guides.csv to the names
+# actually present in the H5 so Step 01 can match them correctly.
 #
-# Copy the script to your working directory first:
-ciri_copy_scripts()
-#
-# Then run from the RStudio Terminal:
-#   Rscript harmonise_guide_names.R \
-#     --guides      scratch/guides_2.csv \
-#     --protospacer scratch/protospacer_calls_per_cell.csv \
-#     --out         scratch/guides_harmonised.csv
-#
-# Inspect:  scratch/name_mapping.csv  — verify all guides were matched
-# Then set GUIDES <- "scratch/guides_harmonised.csv" above.
+# Inspect scratch/name_mapping.csv afterwards to verify all guides matched.
+ciri_harmonise_guides(
+  guides_path      = file.path(DATA_DIR, "scratch/guides_2.csv"),
+  protospacer_path = file.path(DATA_DIR, "scratch/protospacer_calls_per_cell.csv"),
+  out_path         = file.path(DATA_DIR, "scratch/guides_harmonised.csv")
+)
+# Inspect: scratch/name_mapping.csv   — check all guides matched correctly
+# Then set GUIDES <- "scratch/guides_harmonised.csv" in the config above.
 
 # =============================================================================
 # STEP 00 — Download Ensembl gene reference (once per project)
