@@ -17,6 +17,7 @@ at runtime and gives a clear install instruction if something is missing.
 
 ```r
 install.packages("devtools")
+library(devtools)
 devtools::install_github("ebalmas/CIRIseq", ref = "V4")
 library(CIRI)
 ```
