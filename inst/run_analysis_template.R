@@ -84,65 +84,62 @@ ciri_promote_scratch("step01_assignment", sample = SAMPLE,
                      output_root = OUTPUT_ROOT, scratch_dir = SCRATCH_DIR)
 
 # =============================================================================
-# STEP 02a — Annotate & QC  (standalone script — NOT a package function)
+# STEP 02a — Annotate & QC  [NO FILTERING]
 # =============================================================================
-# Builds the Seurat object, joins aggregation.csv metadata and guide
-# assignments, computes mito/ribo %, and saves QC plots with suggested
-# threshold dotted lines. No cells are removed here.
-#
-# Run from the RStudio Terminal:
-#   Rscript ciri_step02_annotate.R \
-#     --data_dir    /path/to/your/data \
-#     --sample      AB011 \
-#     --mito_hi     15  --mito_lo 1  --ribo_lo 3 \
-#     --nGene_lo    300 --nGene_hi 7000 --nUMI_lo 100
-#
-# Or source() from RStudio after editing INTERACTIVE_PARAMS at the top.
-#
-# Inspect before proceeding:
+# Builds the Seurat object, joins aggregation.csv metadata + guide assignments,
+# computes mito/ribo %, saves QC plots with suggested threshold dotted lines.
+# Nothing is filtered here — just look at the plots and decide your real cuts.
+ciri_step02_annotate(
+  data_dir             = DATA_DIR,
+  matrix               = "scratch/filtered_feature_bc_matrix.h5",
+  aggr_csv             = "scratch/aggregation.csv",
+  scratch_dir          = SCRATCH_DIR,
+  output_root          = OUTPUT_ROOT,
+  sample               = SAMPLE,
+  protein_coding_rdata = PC_RDATA,
+  # Suggested dotted lines (adjust to move lines on plots, not actual filters):
+  suggest_mito_hi  = 15, suggest_mito_lo  = 1, suggest_ribo_lo  = 3,
+  suggest_nGene_lo = 300, suggest_nGene_hi = 7000, suggest_nUMI_lo = 100
+)
+# ↑ Inspect before continuing:
 #   Output/QC/<date>/ribomito/<date>_all_QC_final.pdf
 #   Output/QC/<date>/ribomito/<date>_percent_MT_RIBO_QC.pdf
 #   Output/QC/<date>/ribomito/<date>_gene_UMI_QC.pdf
+#   Output/QC/<date>/csv/<date>_pre_QCcounts.csv
 #
-# The annotated Seurat object is saved automatically to:
-#   Output/QC/<date>/to_scratch/seurat_annotated.rds
-# Copy it to scratch/ when ready:
-#   file.copy("Output/QC/<date>/to_scratch/seurat_annotated.rds", "scratch/")
+# Copy seurat_annotated.rds to scratch/ when happy:
+file.copy("Output/QC/<date>/to_scratch/seurat_annotated.rds", SCRATCH_DIR)
 
 # =============================================================================
-# STEP 02b — Filter + Monocle3  (standalone script — run 3 times)
+# STEP 02b — Filter + Monocle3   (run up to 3 times)
 # =============================================================================
-# RUN 1: apply your real filter thresholds + build Monocle3 at 7 resolutions
-#   Rscript ciri_step02_filter.R \
-#     --sample    AB011 \
-#     --mito_hi   10  --mito_lo 0  --ribo_lo 1 \
-#     --nGene_lo  300 --nGene_hi 7000 --nUMI_lo 100
+# RUN 1 — apply your real filter thresholds:
+ciri_step02_filter(
+  scratch_dir  = SCRATCH_DIR,
+  output_root  = OUTPUT_ROOT,
+  sample       = SAMPLE,
+  mito_hi  = 10, mito_lo = 0, ribo_lo = 1,
+  nGene_lo = 300, nGene_hi = 7000, nUMI_lo = 100,
+  num_dim  = 30
+)
+# ↑ Inspect: Output/monocle/<date>/umap/<date>_variance_knee_plot_dim30.png
+#   → Curve should flatten before dim 30; if not, re-run with num_dim = 50
 #
-# Inspect: Output/monocle/<date>/umap/<date>_variance_knee_plot_dim30.png
-#   → Does curve flatten before dim 30? If not, re-run with --num_dim 50
+# RUN 2 (only if knee plot wrong — increase num_dim):
+# ciri_step02_filter(scratch_dir=SCRATCH_DIR, output_root=OUTPUT_ROOT,
+#   sample=SAMPLE, num_dim=50,
+#   mito_hi=10, mito_lo=0, ribo_lo=1, nGene_lo=300, nGene_hi=7000, nUMI_lo=100)
 #
-# RUN 2 (if knee plot wrong):
-#   Rscript ciri_step02_filter.R --sample AB011 --num_dim 50 [+ same thresholds]
+# ↑ Compare 7 UMAP PDFs in Output/monocle/<date>/umap/:
+#   _cds_6_ res=1e-5   (fewest) … _cds_1_ res=1e-2 (most clusters)
 #
-# Then compare all 7 UMAP PDFs in: Output/monocle/<date>/umap/
-#   _cds_6_ res=1e-5  (fewest clusters)
-#   _cds_7_ res=2.5e-5
-#   _cds_2_ res=1e-4
-#   _cds_4_ res=2e-4
-#   _cds_3_ res=2e-4 k=15
-#   _cds_5_ res=5e-4
-#   _cds_1_ res=1e-2  (most clusters)
+# RUN 3 — finalise chosen resolution:
+# ciri_step02_filter(scratch_dir=SCRATCH_DIR, output_root=OUTPUT_ROOT,
+#   sample=SAMPLE, chosen_cds="cds_3", num_dim=30,
+#   mito_hi=10, mito_lo=0, ribo_lo=1, nGene_lo=300, nGene_hi=7000, nUMI_lo=100)
 #
-# RUN 3: finalise with chosen resolution
-#   Rscript ciri_step02_filter.R \
-#     --sample      AB011 \
-#     --chosen_cds  cds_3 \
-#     --num_dim     30 \
-#     --mito_hi     10  --mito_lo 0  --ribo_lo 1 \
-#     --nGene_lo    300 --nGene_hi 7000 --nUMI_lo 100
-#
-# Copy cds_final.rds to scratch/ when ready:
-#   file.copy("Output/monocle/<date>/to_scratch/cds_final.rds", "scratch/")
+# Copy cds_final.rds to scratch/ when happy:
+file.copy("Output/monocle/<date>/to_scratch/cds_final.rds", SCRATCH_DIR)
 
 # =============================================================================
 # STEP 03 — Load & Preprocess  (if not using step 02b's Monocle3 output)

@@ -25,7 +25,7 @@
 #' \describe{
 #'   \item{Step 00}{biomaRt (Bioconductor)}
 #'   \item{Step 01}{hdf5r (CRAN) — also needs the HDF5 system library, see README}
-#'   \item{Step 02}{hdf5r, Seurat, data.table (CRAN)}
+#'   \item{Step 02}{hdf5r, Seurat (≥ 5.0.0), SeuratObject (≥ 5.0.0), patchwork (CRAN)}
 #'   \item{Steps 03-08}{monocle3 (GitHub), igraph (CRAN)}
 #' }
 #'
@@ -52,7 +52,7 @@ install_dependencies <- function(steps = "all", upgrade = "never") {
     "01"    = list(cran = "hdf5r",
                    bioc = character(0),
                    gh   = character(0)),
-    "02"    = list(cran = c("hdf5r", "Seurat", "data.table"),
+    "02"    = list(cran = c("hdf5r", "Seurat", "SeuratObject", "patchwork"),
                    bioc = character(0),
                    gh   = character(0)),
     "03-08" = list(cran = "igraph",
@@ -136,7 +136,7 @@ check_dependencies <- function() {
   pkgs <- list(
     "Step 00 — Ensembl reference"  = "biomaRt",
     "Step 01 — Guide assignment"   = "hdf5r",
-    "Step 02 — Filter"             = c("hdf5r", "Seurat", "data.table"),
+    "Step 02 — Seurat QC"          = c("hdf5r", "Seurat", "SeuratObject", "patchwork"),
     "Steps 03-08 — Monocle3"       = c("monocle3", "igraph")
   )
 
