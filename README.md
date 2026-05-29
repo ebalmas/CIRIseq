@@ -35,8 +35,7 @@ docker exec -idt container_name rstudio-server start
 go on browser http://localhost:8080/ and add the credentials
 
 
-##Below the instruction to use outside the prepared Docker:
-
+## Below are the instructions to use outside the prepared Docker:
 ---
 
 ## Installation
