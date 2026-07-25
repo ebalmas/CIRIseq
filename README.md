@@ -49,7 +49,7 @@ at runtime and gives a clear install instruction if something is missing.
 ```r
 install.packages("devtools")
 library(devtools)
-devtools::install_github("ebalmas/CIRIseq", ref = "V4")
+devtools::install_github("ebalmas/CIRIseq", ref = "V5_CIRIseq")
 library(CIRI)
 ```
 
@@ -107,13 +107,14 @@ sudo dnf install hdf5-devel            # Fedora / RHEL
 
 Seurat v5 (released 2023) broke the `slot =` argument in `GetAssayData()`.
 The CIRI package uses `SeuratObject::GetAssayData(assay = "RNA", layer = "counts")`
-throughout. If you see:
+throughout, so this is already handled — if you see:
 
 ```
 Error: The `slot` argument of `GetAssayData()` was deprecated in SeuratObject 5.0.0
 ```
 
-update the CIRI package: `devtools::install_github("ebalmas/CIRIseq", ref = "V4", force = TRUE)`
+make sure you're on the latest `V5_CIRIseq` install and haven't got a stale
+`SeuratObject` cached: `devtools::install_github("ebalmas/CIRIseq", ref = "V5_CIRIseq", force = TRUE)`.
 
 ---
 
@@ -232,17 +233,38 @@ Inspect `scratch/name_mapping.csv` to verify all guides matched. Then use
 
 ## Step 01 — Perturbation assignment
 
+Provide **either** `matrix` (the H5) **or** `protospacer`
+(`protospacer_calls_per_cell.csv`) — not both. `protospacer` is recommended:
+it avoids HDF5 read issues and reuses names already harmonised in the
+pre-step.
+
 ```r
+# Recommended: protospacer_calls_per_cell.csv
 ciri_step01_assignment(
   data_dir    = "/path/to/data",
-  matrix      = "scratch/filtered_feature_bc_matrix.h5",
+  protospacer = "scratch/protospacer_calls_per_cell.csv",
   guides      = "scratch/guides_harmonised.csv",
   sample      = "AB011",
   strategy    = 2,       # 1 = single arm, 2 = CIRI dual arm
   threshold_a = -1,      # -1 = auto-detect via KDE valley
   threshold_i = -1
 )
+
+# Alternative: H5 matrix directly
+ciri_step01_assignment(
+  data_dir    = "/path/to/data",
+  matrix      = "scratch/filtered_feature_bc_matrix.h5",
+  guides      = "scratch/guides_harmonised.csv",
+  sample      = "AB011",
+  strategy    = 2,
+  threshold_a = -1,
+  threshold_i = -1
+)
 ```
+
+`matrix` and `guides`/`protospacer` may be given either as a path relative
+to `data_dir`, or as a full absolute path (starting with `/`) — either
+works.
 
 **KDE auto-thresholding:** when `threshold = -1`, the pipeline finds the
 first valley in the kernel density estimate of per-cell fixed-guide UMIs —
@@ -357,10 +379,12 @@ Rscript ciri_step02_filter.R --sample AB011 --chosen_cds cds_3 --num_dim 30 \
 
 | Parameter | Default | Description |
 |---|---|---|
-| `data_dir` | required | Folder with H5 and guides CSV |
-| `matrix` | required | H5 filename |
+| `data_dir` | required | Folder containing the input files |
+| `matrix` | `NULL` | H5 filename. Provide this **or** `protospacer` |
+| `protospacer` | `NULL` | `protospacer_calls_per_cell.csv` filename. **Recommended** — avoids HDF5 name mismatches |
 | `guides` | `"guides.csv"` | Use `guides_harmonised.csv` |
 | `sample` | `"CIRI"` | Experiment name |
+| `output_root` | `"Output"` | Top-level output directory |
 | `strategy` | `1` | `1` = single arm; `2` = CIRI dual arm |
 | `threshold_a` | `-1` | CRISPRa UMI threshold; `-1` = auto KDE |
 | `threshold_i` | `-1` | CRISPRi UMI threshold; `-1` = auto KDE |
@@ -373,6 +397,8 @@ Rscript ciri_step02_filter.R --sample AB011 --chosen_cds cds_3 --num_dim 30 \
 | `matrix` | `"scratch/filtered_feature_bc_matrix.h5"` | H5 filename |
 | `aggr_csv` | `"scratch/aggregation.csv"` | CellRanger aggr input CSV |
 | `scratch_dir` | `"scratch"` | Folder with annotation_data.csv |
+| `output_root` | `"Output"` | Top-level output directory |
+| `sample` | `"CIRI"` | Experiment name |
 | `protein_coding_rdata` | `""` | Optional gene filter RData |
 | `suggest_mito_hi/lo` | `15` / `1` | Dotted lines on plots only |
 | `suggest_ribo_lo` | `3` | Dotted line on plots only |
