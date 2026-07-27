@@ -70,7 +70,7 @@ ciri_step03_load <- function(sample       = "CIRI",
   cds <- monocle3::reduce_dimension(cds)
   log_info("Clustering (resolution = ", resolution, ") ...")
   cds <- monocle3::cluster_cells(cds, resolution = resolution)
-  SingleCellExperiment::colData(cds)$clusters <- monocle3::clusters(cds)
+  SummarizedExperiment::colData(cds)$clusters <- monocle3::clusters(cds)
 
   n_clust <- length(unique(monocle3::clusters(cds)))
   log_info("Found ", n_clust, " clusters")
@@ -84,8 +84,8 @@ ciri_step03_load <- function(sample       = "CIRI",
   }
   .save_umap("cluster", "umap_clusters.pdf", label = TRUE)
   .save_umap("sample",  "umap_sample.pdf")
-  if ("gene_a" %in% names(SingleCellExperiment::colData(cds))) .save_umap("gene_a", "umap_guide_a.pdf")
-  if ("gene_i" %in% names(SingleCellExperiment::colData(cds))) .save_umap("gene_i", "umap_guide_i.pdf")
+  if ("gene_a" %in% names(SummarizedExperiment::colData(cds))) .save_umap("gene_a", "umap_guide_a.pdf")
+  if ("gene_i" %in% names(SummarizedExperiment::colData(cds))) .save_umap("gene_i", "umap_guide_i.pdf")
 
   clust_tbl <- as.data.frame(table(monocle3::clusters(cds)))
   names(clust_tbl) <- c("cluster", "n_cells")
@@ -249,8 +249,8 @@ ciri_step05_enrichment <- function(clusters,
   assert_file(cds_path, hint = "Run ciri_step03_load() then ciri_promote_scratch().")
 
   cds <- load_rdata(cds_path)
-  SingleCellExperiment::colData(cds)$clusters <- monocle3::clusters(cds)
-  df  <- as.data.frame(SingleCellExperiment::colData(cds))
+  SummarizedExperiment::colData(cds)$clusters <- monocle3::clusters(cds)
+  df  <- as.data.frame(SummarizedExperiment::colData(cds))
 
   .overview <- function(gene_col, fname) {
     if (!gene_col %in% names(df)) return(invisible(NULL))
@@ -348,15 +348,15 @@ ciri_step06_trajectory <- function(clusters,
   assert_file(cds_path, hint = "Run ciri_step03_load() then ciri_promote_scratch().")
 
   cds <- load_rdata(cds_path)
-  SingleCellExperiment::colData(cds)$clusters <- monocle3::clusters(cds)
-  cds_sub <- cds[, SingleCellExperiment::colData(cds)$clusters %in% clusters]
-  SingleCellExperiment::colData(cds_sub)$clusters_main <- SingleCellExperiment::colData(cds_sub)$clusters
+  SummarizedExperiment::colData(cds)$clusters <- monocle3::clusters(cds)
+  cds_sub <- cds[, SummarizedExperiment::colData(cds)$clusters %in% clusters]
+  SummarizedExperiment::colData(cds_sub)$clusters_main <- SummarizedExperiment::colData(cds_sub)$clusters
   log_info("Subset: ", ncol(cds_sub), " cells")
 
   cds_sub <- monocle3::preprocess_cds(cds_sub, num_dim = n_dims)
   cds_sub <- monocle3::reduce_dimension(cds_sub, reduction_method = "UMAP")
   cds_sub <- monocle3::cluster_cells(cds_sub, resolution = resolution, random_seed = seed)
-  SingleCellExperiment::colData(cds_sub)$clusters_sub <- monocle3::clusters(cds_sub)
+  SummarizedExperiment::colData(cds_sub)$clusters_sub <- monocle3::clusters(cds_sub)
 
   .su <- function(color_by, fname, label = FALSE, traj = FALSE) {
     pp <- monocle3::plot_cells(cds_sub, color_cells_by = color_by,
@@ -445,7 +445,7 @@ ciri_step07_pseudotime <- function(group,
 
   cds     <- load_rdata(cds_path)
   pt      <- utils::read.csv(pt_path, row.names = 1); names(pt) <- "pseudotime"
-  cell_df <- as.data.frame(SingleCellExperiment::colData(cds))
+  cell_df <- as.data.frame(SummarizedExperiment::colData(cds))
   shared  <- intersect(rownames(pt), rownames(cell_df))
   cell_df <- cell_df[shared, ]; cell_df$pseudotime <- pt[shared, "pseudotime"]
 
@@ -572,7 +572,7 @@ ciri_step08_signatures <- function(group,
 
     utils::write.csv(data.frame(score = scores, row.names = names(scores)),
                      file.path(out$csv, "signature_values", paste0(sig_name, ".csv")))
-    SingleCellExperiment::colData(cds)[[paste0("sig_", sig_name)]] <- scores[colnames(cds)]
+    SummarizedExperiment::colData(cds)[[paste0("sig_", sig_name)]] <- scores[colnames(cds)]
 
     ggplot2::ggsave(file.path(out$plots, paste0("umap_", sig_name, ".pdf")),
       monocle3::plot_cells(cds, color_cells_by = paste0("sig_", sig_name),
@@ -581,8 +581,8 @@ ciri_step08_signatures <- function(group,
         ggplot2::ggtitle(paste("Signature:", sig_name)),
       width = 8, height = 6)
 
-    if ("gene_comb" %in% names(SingleCellExperiment::colData(cds))) {
-      rows[[sig_name]] <- data.frame(gene_comb = SingleCellExperiment::colData(cds)$gene_comb,
+    if ("gene_comb" %in% names(SummarizedExperiment::colData(cds))) {
+      rows[[sig_name]] <- data.frame(gene_comb = SummarizedExperiment::colData(cds)$gene_comb,
                                       score = scores[colnames(cds)]) |>
         dplyr::group_by(gene_comb) |>
         dplyr::summarise(mean_score = mean(score, na.rm = TRUE), n_cells = dplyr::n(),

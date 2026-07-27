@@ -579,7 +579,7 @@ ciri_step02_filter <- function(scratch_dir  = "scratch",
     args <- list(cds, resolution = cfg$res)
     if (!is.null(cfg$k)) args$k <- cfg$k
     clust <- do.call(monocle3::cluster_cells, args)
-    SingleCellExperiment::colData(clust)$monocle_clusters <-
+    SummarizedExperiment::colData(clust)$monocle_clusters <-
       as.character(monocle3::clusters(clust))
     cds_list[[nm]] <- clust
 
@@ -609,8 +609,8 @@ ciri_step02_filter <- function(scratch_dir  = "scratch",
                                   label_cell_groups=TRUE, show_trajectory_graph=FALSE,
                                   label_leaves=FALSE, label_branch_points=FALSE,
                                   graph_label_size=3, group_label_size=4, cell_size=1)
-  SingleCellExperiment::colData(cds)$UMAP_1_monocle <- pbuild$data$data_dim_1
-  SingleCellExperiment::colData(cds)$UMAP_2_monocle <- pbuild$data$data_dim_2
+  SummarizedExperiment::colData(cds)$UMAP_1_monocle <- pbuild$data$data_dim_1
+  SummarizedExperiment::colData(cds)$UMAP_2_monocle <- pbuild$data$data_dim_2
 
   p_final <- monocle3::plot_cells(cds, color_cells_by="cluster",
                                    group_cells_by="cluster", group_label_size=7,
