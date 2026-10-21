@@ -579,7 +579,9 @@ ciri_step02_filter <- function(scratch_dir  = "scratch",
     args <- list(cds, resolution = cfg$res)
     if (!is.null(cfg$k)) args$k <- cfg$k
     clust <- do.call(monocle3::cluster_cells, args)
-    monocle3::colData(clust)$monocle_clusters <-
+
+    # colData is from SummarizedExperiment, not exported by monocle3
+    SummarizedExperiment::colData(clust)$monocle_clusters <-
       as.character(monocle3::clusters(clust))
     cds_list[[nm]] <- clust
 
@@ -609,8 +611,9 @@ ciri_step02_filter <- function(scratch_dir  = "scratch",
                                   label_cell_groups=TRUE, show_trajectory_graph=FALSE,
                                   label_leaves=FALSE, label_branch_points=FALSE,
                                   graph_label_size=3, group_label_size=4, cell_size=1)
-  monocle3::colData(cds)$UMAP_1_monocle <- pbuild$data$data_dim_1
-  monocle3::colData(cds)$UMAP_2_monocle <- pbuild$data$data_dim_2
+  # colData is from SummarizedExperiment, not exported by monocle3
+  SummarizedExperiment::colData(cds)$UMAP_1_monocle <- pbuild$data$data_dim_1
+  SummarizedExperiment::colData(cds)$UMAP_2_monocle <- pbuild$data$data_dim_2
 
   p_final <- monocle3::plot_cells(cds, color_cells_by="cluster",
                                    group_cells_by="cluster", group_label_size=7,
@@ -619,7 +622,8 @@ ciri_step02_filter <- function(scratch_dir  = "scratch",
                   p_final + ggplot2::facet_grid(~sample_id), width=10, height=5)
   ggplot2::ggsave(paste0(pfx_umap,"_UMAP_single.pdf"), p_final, width=5, height=5)
 
-  cell_metadata <- as.data.frame(cds@colData)
+  # colData returns a DataFrame; coerce to plain data.frame for CSV export
+  cell_metadata <- as.data.frame(SummarizedExperiment::colData(cds))
   save(cell_metadata, counts, cds,
        file = paste0(pfx_mon_R,"_monocle_cds_clustered_FINAL.RData"))
   saveRDS(cds, file.path(dirs$mon_scr, "cds_final.rds"))
