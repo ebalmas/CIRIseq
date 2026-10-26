@@ -27,15 +27,61 @@
 #'                    Default \code{"guides.csv"}.
 #' @param sample      Experiment name, used in output folder name.
 #' @param output_root Top-level output directory. Default \code{"Output"}.
-#' @param strategy    Integer. \code{1} = single arm: cells assigned if they have
-#'                    a valid CRISPRa OR CRISPRi variable guide (or both).
-#'                    \code{2} = CIRI dual arm: cells assigned only if they have
-#'                    a valid variable guide for BOTH CRISPRa AND CRISPRi.
-#'                    Use \code{2} for CRISPRa+CRISPRi combinatorial screens.
+#' @param strategy    Integer, which cells are retained. \code{1} = every cell
+#'                    positive for a fixed guide in either arm is kept, and the
+#'                    arm with no valid variable-guide call gets \code{"NA"}.
+#'                    \code{2} = a valid variable-guide call is required; dual
+#'                    (CRISPRa+CRISPRi) cells are kept together with
+#'                    CRISPRa-only and CRISPRi-only cells. Use \code{2} for
+#'                    CRISPRa+CRISPRi combinatorial screens.
+#'                    This parameter controls the ARMS, not how many variable
+#'                    guides are called per arm: for that see
+#'                    \code{variable_guides}.
+#' @param variable_guides Integer, the variable-guide calling protocol, i.e. how
+#'                    many variable guides per arm the library carries. This is
+#'                    the \code{guide_strategy} / \code{variable_guides} argument
+#'                    of the original \code{CIRI_unified.R}.
+#'                    \code{1} = Mode 1, one variable guide per arm: the top
+#'                    guide is called when \code{top1 >= min_umi} and
+#'                    \code{top1 / top2 >= min_ratio}; \code{feature_a} /
+#'                    \code{feature_i} hold a single guide name.
+#'                    \code{2} = Mode 2, two variable guides per arm, i.e. the
+#'                    A/B pair of the same gene: the top three guides are ranked,
+#'                    the pair is called when
+#'                    \code{top1 + top2 >= min_umi_pair} and
+#'                    \code{(top1 + top2) / top3 >= min_ratio_pair}, and top1 and
+#'                    top2 must be the \code{A} and \code{B} guide of the same
+#'                    gene and the same number. The two names are returned
+#'                    collapsed with a semicolon, e.g. \code{"NTCa_1A;NTCa_1B"}.
+#'                    Mode 2 requires the A/B names to be distinct in the input;
+#'                    see the note in Details.
 #' @param threshold_a CRISPRa fixed-guide UMI threshold. \code{-1} = auto-detect (default).
 #' @param threshold_i CRISPRi fixed-guide UMI threshold. \code{-1} = auto-detect (default).
+#' @param min_umi     Mode 1 only: minimum UMI count of the top variable guide. Default \code{10}.
+#' @param min_ratio   Mode 1 only: minimum \code{top1 / top2} UMI ratio. Default \code{5}.
+#' @param min_umi_pair  Mode 2 only: minimum \code{top1 + top2} UMI count. Default \code{4}.
+#' @param min_ratio_pair Mode 2 only: minimum \code{(top1 + top2) / top3} UMI ratio. Default \code{10}.
+#' @param missing_top3 Mode 2 only, what to do with cells that have exactly two
+#'                    variable guides in an arm, so that \code{top3} does not
+#'                    exist and the ratio is undefined. \code{"drop"} (default)
+#'                    discards them, which is the behaviour of the original
+#'                    \code{CIRI_unified.R} and reproduces published results;
+#'                    \code{"accept"} treats the ratio as infinite and keeps
+#'                    them, subject to the \code{min_umi_pair} threshold. The
+#'                    number of cells concerned is reported in the log either way.
 #'
 #' @return Invisibly returns the path to the output folder.
+#'
+#' @details
+#' \strong{Mode 2 and guide-name harmonisation.} \code{.harmonise_guide_names()}
+#' collapses \code{GENE_1A} / \code{GENE_1B} to \code{GENE_1} only when the
+#' collapsed name is actually present in the data; when the CellRanger feature
+#' reference keeps the two names distinct, the exact names are preserved and
+#' Mode 2 can run. Mode 2 therefore needs no change to the harmonisation step,
+#' but it does need an input in which the \code{A} and \code{B} guides are
+#' separate features: if fewer than two distinct A/B pairs are found in an arm,
+#' the function stops with an explanatory error rather than silently returning
+#' an empty assignment.
 #'
 #' @section Output structure:
 #' \preformatted{
@@ -83,9 +129,17 @@ ciri_step01_assignment <- function(data_dir,
                                    guides       = "guides.csv",
                                    sample       = "CIRI",
                                    output_root  = "Output",
-                                   strategy     = 1L,
-                                   threshold_a  = -1,
-                                   threshold_i  = -1) {
+                                   strategy        = 1L,
+                                   variable_guides = 1L,
+                                   threshold_a     = -1,
+                                   threshold_i     = -1,
+                                   min_umi         = 10,
+                                   min_ratio       = 5,
+                                   min_umi_pair    = 4,
+                                   min_ratio_pair  = 10,
+                                   missing_top3    = c("drop", "accept")) {
+
+  missing_top3 <- match.arg(missing_top3)
 
   if (is.null(matrix) && is.null(protospacer))
     stop("Provide either 'matrix' (H5 filename) or 'protospacer' (protospacer_calls_per_cell.csv).",
@@ -94,41 +148,59 @@ ciri_step01_assignment <- function(data_dir,
   out      <- make_out_dirs(output_root, "step01_assignment", sample)
   data_dir <- normalizePath(data_dir, mustWork = TRUE)
 
-  # rp(): resolve a path relative to data_dir, but pass absolute paths through
-  # unchanged (so callers can supply either a bare filename or a full path).
-  rp <- function(x) if (is.null(x) || startsWith(x, "/")) x else file.path(data_dir, x)
-
-  input_file <- if (!is.null(protospacer)) rp(protospacer) else rp(matrix)
+  input_file <- if (!is.null(protospacer))
+    file.path(data_dir, protospacer) else file.path(data_dir, matrix)
 
   step_banner("01", "Perturbation Assignment",
-    inputs  = c(input_file, rp(guides)),
+    inputs  = c(input_file, file.path(data_dir, guides)),
     outputs = c(out$csv, out$plots, out$stats,
                 file.path(out$to_scratch, "annotation_data.csv"))
   )
 
   assert_file(input_file)
-  assert_file(rp(guides))
+  assert_file(file.path(data_dir, guides))
   if (!strategy %in% c(1L, 2L)) stop("strategy must be 1 or 2", call. = FALSE)
+  if (!variable_guides %in% c(1L, 2L))
+    stop("variable_guides must be 1 (one variable guide per arm) or 2 (A/B pair per arm)",
+         call. = FALSE)
 
   # ---- load and harmonise guide annotations --------------------------------
-  ann_raw <- read.csv(rp(guides), header = FALSE)
+  # ciri_harmonise_guides() writes guides_harmonised.csv WITH a header, while the
+  # original guides.csv has none: accept both instead of turning the header line
+  # into a guide called "feature".
+  ann_raw <- read.csv(file.path(data_dir, guides), header = FALSE,
+                      stringsAsFactors = FALSE)
+  if (nrow(ann_raw) && identical(tolower(trimws(as.character(ann_raw[1, 1]))), "feature")) {
+    ann_raw <- ann_raw[-1, , drop = FALSE]
+    rownames(ann_raw) <- NULL
+    log_info("Header row detected in '", guides, "' and skipped")
+  }
   names(ann_raw) <- c("feature", "type", "fixed")
+
+  # Fail before the expensive matrix load if Mode 2 cannot possibly work: the
+  # guides CSV must still carry the A/B replicate names. guides_harmonised.csv
+  # has them collapsed by design, so Mode 2 needs the pre-harmonisation CSV.
+  if (variable_guides == 2L && !any(grepl("[AB]$", ann_raw$feature)))
+    stop("variable_guides = 2 (Mode 2) needs a guides CSV whose names still end ",
+         "in A/B (e.g. NTCa_1A / NTCa_1B), but '", guides, "' has none. ",
+         "guides_harmonised.csv collapses the A/B replicates: pass the original ",
+         "guides CSV, and check that the CellRanger feature reference declares ",
+         "A and B as separate features.", call. = FALSE)
 
   # ---- load CRISPR data ----------------------------------------------------
   if (!is.null(protospacer)) {
     log_info("Reading protospacer_calls_per_cell.csv ...")
-    result <- .load_from_protospacer(rp(protospacer), ann_raw)
+    result <- .load_from_protospacer(file.path(data_dir, protospacer), ann_raw)
   } else {
     .check_cran_pkgs("hdf5r")
     log_info("Loading CRISPR capture data from H5 ...")
-    result <- .load_from_h5(rp(matrix), ann_raw)
+    result <- .load_from_h5(file.path(data_dir, matrix), ann_raw)
   }
 
   CIRI_long <- result$CIRI_long
-  ann       <- result$ann          # harmonised annotation (matched names)
-  mapping   <- result$mapping      # name mapping table for reference
+  ann       <- result$ann
+  mapping   <- result$mapping
 
-  # Save name mapping so user can inspect
   write.csv(mapping, file.path(out$csv, "guide_name_mapping.csv"), row.names = FALSE)
   log_info("Guide name mapping saved to csv/guide_name_mapping.csv")
 
@@ -140,7 +212,6 @@ ciri_step01_assignment <- function(data_dir,
   write.csv(CIRI_long, file.path(out$csv, "CIRI_long.csv"), row.names = FALSE)
 
   # ---- thresholds ----------------------------------------------------------
-  # KDE diagnostic plots saved to plots/ so you can verify the cut visually
   thresh_a <- .get_threshold(CIRI_long, "a", a_genes, threshold_a, "CRISPRa",
                               plots_dir = out$plots)
   thresh_i <- .get_threshold(CIRI_long, "i", i_genes, threshold_i, "CRISPRi",
@@ -148,10 +219,27 @@ ciri_step01_assignment <- function(data_dir,
   log_info("Threshold CRISPRa: ", thresh_a, " | CRISPRi: ", thresh_i)
 
   # ---- assign --------------------------------------------------------------
+  # variable-guide calling protocol: Mode 1 (one guide per arm) or Mode 2 (A/B pair)
+  call_var <- if (variable_guides == 1L) {
+    log_info("Variable guides: Mode 1, one guide per arm (min_umi = ", min_umi,
+             ", min_ratio = ", min_ratio, ")")
+    function(cl, fixed_genes, type_filter)
+      .assign_var_guides(cl, fixed_genes, type_filter,
+                         min_umi = min_umi, min_ratio = min_ratio)
+  } else {
+    log_info("Variable guides: Mode 2, A/B pair per arm (min_umi_pair = ", min_umi_pair,
+             ", min_ratio_pair = ", min_ratio_pair, ", missing_top3 = ", missing_top3, ")")
+    function(cl, fixed_genes, type_filter)
+      .assign_var_guides_pair(cl, fixed_genes, type_filter,
+                              min_umi_pair = min_umi_pair,
+                              min_ratio_pair = min_ratio_pair,
+                              missing_top3 = missing_top3)
+  }
+
   assign_result <- if (strategy == 1L)
-    .assign_single(CIRI_long, a_genes, i_genes, thresh_a, thresh_i)
+    .assign_single(CIRI_long, a_genes, i_genes, thresh_a, thresh_i, call_var)
   else
-    .assign_dual(CIRI_long, a_genes, i_genes, thresh_a, thresh_i)
+    .assign_dual(CIRI_long, a_genes, i_genes, thresh_a, thresh_i, call_var)
 
   # ---- plots ---------------------------------------------------------------
   log_info("Saving QC plots ...")
@@ -160,7 +248,10 @@ ciri_step01_assignment <- function(data_dir,
   # ---- stats ---------------------------------------------------------------
   stats_txt <- c(
     paste("Sample            :", sample),
-    paste("Strategy          :", strategy),
+    paste("Strategy (arms)   :", strategy),
+    paste("Variable guides   :", variable_guides,
+          if (variable_guides == 1L) "(Mode 1: one guide per arm)"
+          else "(Mode 2: A/B pair per arm)"),
     paste("Input             :", if (!is.null(protospacer)) "protospacer_calls_per_cell.csv" else "H5 matrix"),
     paste("Threshold CRISPRa :", thresh_a),
     paste("Threshold CRISPRi :", thresh_i),
@@ -183,22 +274,12 @@ ciri_step01_assignment <- function(data_dir,
 # Private helpers
 # =============================================================================
 
-# ---------------------------------------------------------------------------
-# .harmonise_guide_names
-# Maps guides.csv feature names to the (possibly collapsed) names used by
-# CellRanger in the H5 or protospacer CSV.
-# Returns: ann data.frame with 'feature' column replaced by the matched name,
-#          plus a mapping table for reference.
-# ---------------------------------------------------------------------------
 .harmonise_guide_names <- function(ann_raw, data_guide_names) {
   find_match <- function(csv_name, data_names) {
-    # 1. strip trailing A or B after _number: "ATF7IP_1A" -> "ATF7IP_1"
     m <- regmatches(csv_name, regexpr("^.+_\\d+(?=[AB]$)", csv_name, perl = TRUE))
     if (length(m) && m %in% data_names) return(m)
-    # 2. gene name only (before first underscore): "NTCa_1A" -> "NTCa"
     gene <- strsplit(csv_name, "_")[[1]][1]
     if (gene %in% data_names) return(gene)
-    # 3. exact match
     if (csv_name %in% data_names) return(csv_name)
     return(NA_character_)
   }
@@ -211,8 +292,6 @@ ciri_step01_assignment <- function(data_dir,
     log_warn(length(unmatched), " guide(s) in guides CSV not found in data: ",
              paste(unmatched, collapse = ", "))
 
-  # Deduplicate: multiple csv rows can map to same data name (A/B replicates)
-  # Keep first occurrence for type/fixed classification
   ann_matched <- ann_raw[!is.na(ann_raw$matched), ]
   ann_dedup   <- ann_matched[!duplicated(ann_matched$matched), ]
   ann_out     <- data.frame(feature = ann_dedup$matched,
@@ -221,25 +300,19 @@ ciri_step01_assignment <- function(data_dir,
                             stringsAsFactors = FALSE)
 
   mapping <- data.frame(
-    guides_csv_name    = ann_raw$feature,
-    cellranger_name    = ann_raw$matched,
-    type               = ann_raw$type,
-    fixed              = ann_raw$fixed,
-    stringsAsFactors   = FALSE
+    guides_csv_name  = ann_raw$feature,
+    cellranger_name  = ann_raw$matched,
+    type             = ann_raw$type,
+    fixed            = ann_raw$fixed,
+    stringsAsFactors = FALSE
   )
 
   list(ann = ann_out, mapping = mapping)
 }
 
-# ---------------------------------------------------------------------------
-# .load_from_protospacer
-# Reads protospacer_calls_per_cell.csv and builds CIRI_long.
-# ---------------------------------------------------------------------------
 .load_from_protospacer <- function(proto_path, ann_raw) {
   proto <- read.csv(proto_path, header = TRUE, stringsAsFactors = FALSE)
-  # Expected columns: cell_barcode, num_features, feature_call, num_umis
 
-  # Parse pipe-separated guide calls into long format
   rows <- lapply(seq_len(nrow(proto)), function(i) {
     features <- strsplit(proto$feature_call[i], "\\|")[[1]]
     umis     <- as.integer(strsplit(as.character(proto$num_umis[i]), "\\|")[[1]])
@@ -251,11 +324,9 @@ ciri_step01_assignment <- function(data_dir,
   })
   CIRI_raw <- do.call(rbind, rows[!sapply(rows, is.null)])
 
-  # Harmonise guide names
   data_guide_names <- unique(CIRI_raw$feature)
   harm <- .harmonise_guide_names(ann_raw, data_guide_names)
 
-  # Join annotation
   CIRI_long <- dplyr::left_join(CIRI_raw, harm$ann, by = "feature") |>
     dplyr::group_by(cell_barcode) |>
     dplyr::mutate(total_umis   = sum(umi),
@@ -265,10 +336,6 @@ ciri_step01_assignment <- function(data_dir,
   list(CIRI_long = CIRI_long, ann = harm$ann, mapping = harm$mapping)
 }
 
-# ---------------------------------------------------------------------------
-# .load_from_h5
-# Reads CRISPR capture rows from H5 and builds CIRI_long.
-# ---------------------------------------------------------------------------
 .load_from_h5 <- function(h5_path, ann_raw) {
   crispr_mat <- .load_crispr_h5(h5_path)
 
@@ -276,7 +343,6 @@ ciri_step01_assignment <- function(data_dir,
     tibble::rownames_to_column("cell_barcode") |>
     tidyr::pivot_longer(-cell_barcode, names_to = "feature", values_to = "umi")
 
-  # Harmonise guide names
   data_guide_names <- unique(CIRI_raw$feature)
   harm <- .harmonise_guide_names(ann_raw, data_guide_names)
 
@@ -307,19 +373,8 @@ ciri_step01_assignment <- function(data_dir,
 
 # ---------------------------------------------------------------------------
 # .auto_threshold
-# Finds the threshold between "cells that did NOT receive the fixed guide"
-# (noise peak, low UMIs) and "cells that DID receive it" (signal peak, high
-# UMIs) using the first valley in the KDE of per-cell fixed-guide UMI sums.
-#
-# What the plot shows (saved to plots/threshold_kde_<label>.pdf):
-#   • Grey histogram  — raw UMI distribution (log10 x-axis)
-#   • Blue curve      — kernel density estimate (KDE)
-#   • All valleys     — grey dotted vertical lines (all local minima found)
-#   • Red dashed line — the chosen threshold (first/leftmost valley)
-#   • Annotation      — threshold value printed on the plot
-#
-# If the red line lands in the wrong place, pass the threshold manually:
-#   ciri_step01_assignment(..., threshold_a = 50, threshold_i = 30)
+# Finds the valley in the KDE of per-cell fixed-guide UMI sums.
+# Saves a diagnostic PDF to plots_dir if provided.
 # ---------------------------------------------------------------------------
 .auto_threshold <- function(umi_vec, label = "", plots_dir = NULL) {
   umi_vec <- umi_vec[umi_vec > 0]
@@ -330,8 +385,6 @@ ciri_step01_assignment <- function(data_dir,
 
   dens   <- stats::density(umi_vec, bw = "SJ", n = 1024)
   dy     <- diff(dens$y)
-
-  # All local minima (valleys): derivative goes from negative to positive
   all_valleys <- which(dy[-length(dy)] < 0 & dy[-1] >= 0)
 
   if (!length(all_valleys)) {
@@ -345,36 +398,30 @@ ciri_step01_assignment <- function(data_dir,
   log_info("Auto-threshold [", label, "]: ", round(thresh, 2),
            "  (", sum(umi_vec >= thresh), " cells above threshold)")
 
-  # --- Save diagnostic KDE plot -------------------------------------------
   if (!is.null(plots_dir)) {
     df_dens <- data.frame(x = dens$x, y = dens$y)
 
     p <- ggplot2::ggplot() +
-      # Histogram of UMIs (log10 scale)
       ggplot2::geom_histogram(
         data    = data.frame(umi = umi_vec),
         mapping = ggplot2::aes(x = umi, y = ggplot2::after_stat(density)),
         bins    = 80, fill = "grey80", colour = "grey60", alpha = 0.6
       ) +
-      # KDE curve
       ggplot2::geom_line(
         data    = df_dens,
         mapping = ggplot2::aes(x = x, y = y),
         colour  = "#2166AC", linewidth = 1
       ) +
-      # All valleys (grey dotted)
       {if (length(all_valleys))
         ggplot2::geom_vline(
           xintercept = dens$x[all_valleys + 1],
           linetype = "dotted", colour = "grey40", linewidth = 0.7
         )
       } +
-      # Chosen threshold (red dashed)
       ggplot2::geom_vline(
         xintercept = thresh,
         linetype = "dashed", colour = "#D6604D", linewidth = 1.2
       ) +
-      # Threshold label
       ggplot2::annotate(
         "text", x = thresh, y = Inf, vjust = 2, hjust = -0.15,
         label = paste0("threshold = ", round(thresh, 1)),
@@ -401,7 +448,7 @@ ciri_step01_assignment <- function(data_dir,
       )
 
     out_pdf <- file.path(plots_dir,
-                         paste0("threshold_kde_", gsub(" ","_",label), ".pdf"))
+                         paste0("threshold_kde_", gsub(" ", "_", label), ".pdf"))
     ggplot2::ggsave(out_pdf, p, width = 7, height = 5)
     log_info("KDE threshold plot saved: plots/", basename(out_pdf))
   }
@@ -409,7 +456,6 @@ ciri_step01_assignment <- function(data_dir,
   thresh
 }
 
-# Wrapper that pulls the right UMI vector and calls .auto_threshold
 .get_threshold <- function(CIRI_long, type_filter, fixed_genes,
                             threshold, label, plots_dir = NULL) {
   if (threshold != -1) {
@@ -444,8 +490,6 @@ ciri_step01_assignment <- function(data_dir,
   list(crispra = crispra, crispri = crispri, pos_a = pos_a, pos_i = pos_i)
 }
 
-# .assign_var_guides: assigns one variable guide per cell for one type arm.
-# A cell is assigned if: top guide UMI >= min_umi AND top/second ratio >= min_ratio.
 .assign_var_guides <- function(CIRI_long, fixed_genes, type_filter,
                                min_umi = 10, min_ratio = 5) {
   CIRI_long |>
@@ -464,12 +508,117 @@ ciri_step01_assignment <- function(data_dir,
     dplyr::select(cell_barcode, top_guide)
 }
 
-# Strategy 1: cells assigned if they have a valid CRISPRa OR CRISPRi variable guide.
-.assign_single <- function(CIRI_long, a_genes, i_genes, thresh_a, thresh_i) {
+# Mode 2: two variable guides per arm, the A/B pair of the same gene.
+# Port of the "Dual Guide Logic" branch of CIRI_unified.R (lines 388-470 of
+# alessandro-bertero/CIRI_bioinfo), returning the same column contract as
+# .assign_var_guides(): cell_barcode + top_guide, where top_guide holds the two
+# guide names collapsed with a semicolon, e.g. "NTCa_1A;NTCa_1B".
+.assign_var_guides_pair <- function(CIRI_long, fixed_genes, type_filter,
+                                    min_umi_pair   = 4,
+                                    min_ratio_pair = 10,
+                                    missing_top3   = c("drop", "accept")) {
+  missing_top3 <- match.arg(missing_top3)
+  empty <- data.frame(cell_barcode = character(0), top_guide = character(0),
+                      stringsAsFactors = FALSE)
+
+  sec <- CIRI_long |>
+    dplyr::filter(type == type_filter, !feature %in% fixed_genes) |>
+    dplyr::mutate(gene = stringr::str_extract(feature, "^[^_]+"))
+  if (!nrow(sec)) {
+    log_warn("Mode 2: no variable guides for arm '", type_filter, "'")
+    return(empty)
+  }
+
+  # the A/B names must be distinct in the input, otherwise Mode 2 cannot work
+  pair_letters <- stringr::str_extract(unique(sec$feature), "[AB]$")
+  if (sum(!is.na(pair_letters)) < 2L)
+    stop("variable_guides = 2 (Mode 2) requires guide names ending in A and B ",
+         "(e.g. NTCa_1A / NTCa_1B), but arm '", type_filter, "' has none. ",
+         "The CellRanger feature reference has collapsed the A/B replicates, ",
+         "so only variable_guides = 1 can be used on this input.", call. = FALSE)
+
+  # rank the top 3 guides per cell, ties broken in favour of the gene of top1
+  top1 <- sec |>
+    dplyr::group_by(cell_barcode) |>
+    dplyr::arrange(dplyr::desc(umi), feature, .by_group = TRUE) |>
+    dplyr::slice(1L) |>
+    dplyr::ungroup() |>
+    dplyr::select(cell_barcode, top1_gene = gene)
+
+  ranked <- sec |>
+    dplyr::left_join(top1, by = "cell_barcode") |>
+    dplyr::group_by(cell_barcode) |>
+    dplyr::arrange(dplyr::desc(umi), dplyr::desc(gene == top1_gene), feature,
+                   .by_group = TRUE) |>
+    dplyr::mutate(rank = dplyr::row_number()) |>
+    dplyr::ungroup() |>
+    dplyr::filter(rank <= 3L) |>
+    dplyr::select(cell_barcode, rank, umi, feature) |>
+    tidyr::pivot_wider(names_from = rank, values_from = c(umi, feature),
+                       names_prefix = "top")
+
+  for (nm in c("umi_top1", "umi_top2", "umi_top3", "feature_top1", "feature_top2"))
+    if (!nm %in% names(ranked))
+      ranked[[nm]] <- if (startsWith(nm, "umi")) NA_integer_ else NA_character_
+
+  n_no_top3 <- sum(!is.na(ranked$umi_top2) & is.na(ranked$umi_top3))
+  log_info("Mode 2, arm '", type_filter, "': ", n_no_top3,
+           " cell(s) with exactly two variable guides (no top3) -> ", missing_top3)
+
+  ranked <- ranked |>
+    dplyr::mutate(
+      ratio = dplyr::case_when(
+        is.na(umi_top2) | umi_top2 <= 0                     ~ Inf,
+        is.na(umi_top3) & missing_top3 == "accept"          ~ Inf,
+        TRUE                                                ~ (umi_top1 + umi_top2) / umi_top3
+      ),
+      pass_filter = !is.na(ratio) & (umi_top1 + umi_top2) >= min_umi_pair &
+                    ratio >= min_ratio_pair
+    ) |>
+    dplyr::filter(pass_filter)
+
+  if (!nrow(ranked)) {
+    log_warn("Mode 2: no cell passed the pair filter for arm '", type_filter, "'")
+    return(empty)
+  }
+
+  # top1 and top2 must be the A and B guide of the same gene and the same number
+  paired <- ranked |>
+    dplyr::mutate(
+      gene1   = stringr::str_extract(feature_top1, "^[^_]+"),
+      gene2   = stringr::str_extract(feature_top2, "^[^_]+"),
+      num1    = stringr::str_extract(feature_top1, "(?<=_)\\d+"),
+      num2    = stringr::str_extract(feature_top2, "(?<=_)\\d+"),
+      letter1 = stringr::str_extract(feature_top1, "[A-Za-z]$"),
+      letter2 = stringr::str_extract(feature_top2, "[A-Za-z]$")
+    ) |>
+    dplyr::filter(
+      (is.na(feature_top1) & !is.na(feature_top2)) |
+      (!is.na(feature_top1) & is.na(feature_top2)) |
+      (gene1 == gene2 & num1 == num2 &
+         ((letter1 == "A" & letter2 == "B") | (letter1 == "B" & letter2 == "A")))
+    )
+
+  log_info("Mode 2, arm '", type_filter, "': ", nrow(paired), " of ", nrow(ranked),
+           " cell(s) carry a matching A/B pair")
+
+  paired |>
+    dplyr::mutate(top_guide = vapply(
+      seq_len(dplyr::n()),
+      function(k) {
+        f <- sort(stats::na.omit(c(feature_top1[k], feature_top2[k])))
+        if (!length(f)) NA_character_ else paste(f, collapse = ";")
+      }, character(1))) |>
+    dplyr::filter(!is.na(top_guide)) |>
+    dplyr::select(cell_barcode, top_guide)
+}
+
+.assign_single <- function(CIRI_long, a_genes, i_genes, thresh_a, thresh_i,
+                           call_var = .assign_var_guides) {
   fs    <- .fixed_summaries(CIRI_long, a_genes, i_genes, thresh_a, thresh_i)
-  var_a <- .assign_var_guides(CIRI_long, c(a_genes, i_genes), "a") |>
+  var_a <- call_var(CIRI_long, c(a_genes, i_genes), "a") |>
     dplyr::rename(feature_a = top_guide)
-  var_i <- .assign_var_guides(CIRI_long, c(a_genes, i_genes), "i") |>
+  var_i <- call_var(CIRI_long, c(a_genes, i_genes), "i") |>
     dplyr::rename(feature_i = top_guide)
   ann <- data.frame(cell_barcode = union(fs$pos_a, fs$pos_i)) |>
     dplyr::left_join(var_a, by = "cell_barcode") |>
@@ -481,12 +630,12 @@ ciri_step01_assignment <- function(data_dir,
   list(annotation = ann, crispra = fs$crispra, crispri = fs$crispri)
 }
 
-# Strategy 2 — CIRI dual arm: cells must have BOTH a CRISPRa AND CRISPRi variable guide.
-.assign_dual <- function(CIRI_long, a_genes, i_genes, thresh_a, thresh_i) {
+.assign_dual <- function(CIRI_long, a_genes, i_genes, thresh_a, thresh_i,
+                         call_var = .assign_var_guides) {
   fs    <- .fixed_summaries(CIRI_long, a_genes, i_genes, thresh_a, thresh_i)
-  var_a <- .assign_var_guides(CIRI_long, c(a_genes, i_genes), "a") |>
+  var_a <- call_var(CIRI_long, c(a_genes, i_genes), "a") |>
     dplyr::rename(feature_a = top_guide)
-  var_i <- .assign_var_guides(CIRI_long, c(a_genes, i_genes), "i") |>
+  var_i <- call_var(CIRI_long, c(a_genes, i_genes), "i") |>
     dplyr::rename(feature_i = top_guide)
 
   ciri_cells <- intersect(
@@ -550,4 +699,3 @@ ciri_step01_assignment <- function(data_dir,
         ggplot2::labs(title = guide))
   }
 }
-

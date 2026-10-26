@@ -49,7 +49,7 @@ setwd("/path/to/my_analysis")
 
 ```r
 install.packages("devtools")
-devtools::install_github("ebalmas/CIRIseq", ref = "V3")
+devtools::install_github("ebalmas/CIRIseq", ref = "V5")
 library(CIRI)
 
 # Install bioinformatics dependencies
@@ -152,6 +152,7 @@ ciri_step01_assignment(
   sample      = SAMPLE,
   output_root = OUTPUT_ROOT,
   strategy    = 2,        # 2 = CIRI dual arm (CRISPRa AND CRISPRi required)
+  variable_guides = 1,    # 1 = one variable guide per arm; 2 = A/B pair of the same gene
   threshold_a = -1,       # auto-detect
   threshold_i = -1
 )
@@ -415,6 +416,6 @@ Output/<date>_step08_signatures_<sample>/
 | `hdf5r` install fails | Install HDF5 system library first (see top of protocol) |
 | Step 01 assigns 0 cells | Run `harmonise_guide_names.R` first; use `guides_harmonised.csv` |
 | KDE threshold wrong | Pass `threshold_a = X` manually; inspect `threshold_kde_CRISPRa.pdf` |
-| `GetAssayData(slot=)` error | Update CIRI: `devtools::install_github("ebalmas/CIRIseq", ref = "V3", force = TRUE)` |
+| `GetAssayData(slot=)` error | Update CIRI: `devtools::install_github("ebalmas/CIRIseq", ref = "V5", force = TRUE)` |
 | Knee plot curve still dropping at dim 30 | Re-run `ciri_step02_filter.R` with `--num_dim 50` |
 | Too many / too few clusters | Change `--chosen_cds` in step 02b Run 3 |

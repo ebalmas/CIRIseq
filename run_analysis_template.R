@@ -11,7 +11,7 @@
 # =============================================================================
 
 ## Option A: installed from GitHub
-# devtools::install_github("ebalmas/CIRIseq", ref = "V3")
+# devtools::install_github("ebalmas/CIRIseq", ref = "V5")
 library(CIRI)
 
 ## Option B: local development (source all R/ files)
@@ -67,8 +67,14 @@ ciri_step01_assignment(
   guides      = GUIDES,
   sample      = SAMPLE,
   output_root = OUTPUT_ROOT,
-  strategy    = 2,       # 1 = single arm (CRISPRa OR CRISPRi)
+  strategy    = 2,       # WHICH ARMS are required
+                          # 1 = CRISPRa OR CRISPRi
                           # 2 = CIRI dual arm (CRISPRa AND CRISPRi)
+  variable_guides = 1,   # VARIABLE-GUIDE PROTOCOL (how many per arm)
+                          # 1 = Mode 1, one guide per arm
+                          # 2 = Mode 2, A/B pair of the same gene
+                          #     -> feature_a like "NTCa_1A;NTCa_1B"
+                          #     needs A/B kept distinct in the input
   threshold_a = -1,      # -1 = auto-detect via KDE valley
   threshold_i = -1       # set manually if KDE plot looks wrong
 )

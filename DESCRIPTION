@@ -1,7 +1,7 @@
 Package: CIRI
 Type: Package
 Title: CIRI CRISPR Screen Analysis Pipeline
-Version: 0.2.0
+Version: 0.3.0
 Authors@R: c(
     person("Alessandro", "Bertero", role = c("aut")),
     person("Maria Luisa", "Ratto",  role = c("aut", "cre"),
