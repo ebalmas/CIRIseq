@@ -1,3 +1,74 @@
+# CIRI 0.4.0
+
+## Guide-name harmonisation: correctness fix
+
+`ciri_harmonise_guides()` matched guide names against the names found in
+`crispr_analysis/protospacer_calls_per_cell.csv`. That file reports the **`id`**
+column of the feature reference, while `filtered_feature_bc_matrix.h5` reports
+the **`name`** column. When the two differ - a 4-guides-per-gene reference
+numbers its rows `GENE_1` ... `GENE_4` under `id` while `name` carries the A/B
+label - the rule that strips a trailing A/B always found a match, and mapped a
+guide onto a different guide's feature.
+
+Measured on AB014: `id` and `name` differ for 52 of 57 rows; of the 50 A/B
+guides mapped onto an existing id, **40 landed on an id belonging to a different
+guide**. The surviving rows were not merely collapsed, their guide-to-feature
+correspondence was wrong.
+
+* Exact match is now tried **first**. A guide name present in the matrix is
+  never a candidate for collapsing.
+* New `feature_reference_path` builds the `id`/`name` map and enables a guard
+  that refuses to map a guide onto the id of a different guide.
+* New `matrix_path` matches against `features/name` from the H5 itself, which is
+  what the rest of the pipeline consumes. Takes precedence; needs hdf5r.
+* New `allow_collapse`. By default harmonisation now **errors** when it would
+  collapse A/B names on a matrix that resolves A and B separately, rather than
+  silently producing a guide list on which `variable_guides = 2` cannot run.
+
+Harmonisation is still required for the genuinely collapsed case - a reference
+that declares one feature per construct. It no longer guesses.
+
+## Rescue of constructs with an undetectable partner guide
+
+The Mode 2 pairing filter confirms vector identity by requiring both guides of a
+construct in the same cell. When one guide is undetectable across the whole
+experiment, that confirmation is unavailable for every cell carrying it, and
+requiring it discards real cells.
+
+`ciri_step01_assignment()` gains `rescue_orphans`, `rescue_constructs`,
+`orphan_frac`, `min_cells_construct`, `min_umi_rescue` and `min_ratio_rescue`.
+Rescued calls carry ONE guide name where pairs carry two joined by `;`, so
+`grepl(";", feature_a)` separates them and gene-level columns are unchanged.
+`assignment_summary.txt` records the setting and the thresholds.
+
+**Eligibility is not justification.** On AB014 four constructs were orphans and
+only one survived validation: the rescued cells of `NTCa_1`, `JMJD3_2` and
+`YBX1_1` tracked the sample background instead of the construct's own
+pair-confirmed cells (NTCa pairs 95.7% / 83.3% mature vs rescued 10.5% / 3.2%),
+i.e. contamination by an abundant barcode. Only `MEF2C_2B`, whose partner is
+detected in zero cells, was enriched over background in both samples (67.6% vs
+35.9%, 20.1% vs 4.1%). `rescue_constructs` should therefore always be given
+explicitly; leaving it `NULL` rescues every orphan and on AB014 would have added
+1387 wrong CRISPRa calls.
+
+## Package validation
+
+* Generate and ship `man/` help pages and reproducible namespace imports.
+* Expose the name-matching helper internally so its regression tests run.
+* Handle constructs with no detections of one partner and validation tables
+  containing only pairs, only rescues, or no calls.
+* Avoid reporting unvalidated constructs without pair references as validated.
+
+## Rescue QC
+
+`ciri_rescue_report()`, `ciri_validate_rescue()`,
+`ciri_plot_rescue_validation()` and `ciri_rescue_qc()`. The validation cannot
+live in step 01 because it needs a per-cell phenotype that only exists after
+clustering; `ciri_rescue_qc()` writes `rescue_validation.csv` and
+`rescue_validation.pdf` and stops if a construct named in `rescue_constructs`
+is inconsistent with its own pairs. The phenotype is an argument, not fixed to
+any particular cluster set.
+
 # CIRI 0.3.0
 
 ## Variable-guide calling protocols (Mode 1 and Mode 2)

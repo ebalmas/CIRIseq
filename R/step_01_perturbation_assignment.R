@@ -70,6 +70,22 @@
 #'                    them, subject to the \code{min_umi_pair} threshold. The
 #'                    number of cells concerned is reported in the log either way.
 #'
+#' @param rescue_orphans Logical. With \code{variable_guides = 2}, allow cells of
+#'   constructs whose partner guide is undetectable experiment-wide to be called
+#'   from the dominant guide alone. Such calls carry ONE guide name; genuine
+#'   pairs carry two joined by \code{";"}. They are not validated at this stage -
+#'   run \code{ciri_rescue_qc()} after clustering.
+#' @param orphan_frac A construct counts as orphan when its weaker guide is
+#'   detected in fewer than this fraction of the stronger guide's cells.
+#' @param min_cells_construct Constructs whose stronger guide is below this many
+#'   cells are treated as dead and never rescued.
+#' @param min_umi_rescue,min_ratio_rescue Single-guide criterion applied to
+#'   rescued cells.
+#' @param rescue_constructs Character vector of guide names to rescue, e.g.
+#'   \code{"MEF2C_2B"}. Leave \code{NULL} to rescue every orphan - appropriate
+#'   only once each one has passed \code{ciri_rescue_qc()}. On AB014 three of
+#'   four orphans failed that check, so an explicit list is the safe default.
+#'
 #' @return Invisibly returns the path to the output folder.
 #'
 #' @details
@@ -137,9 +153,17 @@ ciri_step01_assignment <- function(data_dir,
                                    min_ratio       = 5,
                                    min_umi_pair    = 4,
                                    min_ratio_pair  = 10,
-                                   missing_top3    = c("drop", "accept")) {
+                                   missing_top3    = c("drop", "accept"),
+                                   rescue_orphans  = FALSE,
+                                   orphan_frac     = 0.10,
+                                   min_cells_construct = 50,
+                                   min_umi_rescue  = 10,
+                                   min_ratio_rescue = 5,
+                                   rescue_constructs = NULL) {
 
   missing_top3 <- match.arg(missing_top3)
+  if (rescue_orphans && variable_guides != 2L)
+    stop("rescue_orphans applies to variable_guides = 2 only", call. = FALSE)
 
   if (is.null(matrix) && is.null(protospacer))
     stop("Provide either 'matrix' (H5 filename) or 'protospacer' (protospacer_calls_per_cell.csv).",
@@ -226,7 +250,7 @@ ciri_step01_assignment <- function(data_dir,
     function(cl, fixed_genes, type_filter)
       .assign_var_guides(cl, fixed_genes, type_filter,
                          min_umi = min_umi, min_ratio = min_ratio)
-  } else {
+  } else if (!rescue_orphans) {
     log_info("Variable guides: Mode 2, A/B pair per arm (min_umi_pair = ", min_umi_pair,
              ", min_ratio_pair = ", min_ratio_pair, ", missing_top3 = ", missing_top3, ")")
     function(cl, fixed_genes, type_filter)
@@ -234,6 +258,24 @@ ciri_step01_assignment <- function(data_dir,
                               min_umi_pair = min_umi_pair,
                               min_ratio_pair = min_ratio_pair,
                               missing_top3 = missing_top3)
+  } else {
+    log_info("Variable guides: Mode 2 + orphan rescue (orphan_frac = ", orphan_frac,
+             ", min_cells = ", min_cells_construct, ", min_umi_rescue = ", min_umi_rescue,
+             ", min_ratio_rescue = ", min_ratio_rescue, ")")
+    log_warn("Orphan rescue is ON: cells of constructs whose partner guide is ",
+             "undetectable experiment-wide are called from a single guide. Such ",
+             "calls carry ONE guide name; genuine pairs carry two joined by ';'. ",
+             "They are NOT validated here - run ciri_rescue_qc() after clustering.")
+    function(cl, fixed_genes, type_filter)
+      .assign_var_guides_pair_rescue(cl, fixed_genes, type_filter,
+                                     min_umi_pair = min_umi_pair,
+                                     min_ratio_pair = min_ratio_pair,
+                                     missing_top3 = missing_top3,
+                                     min_umi_rescue = min_umi_rescue,
+                                     min_ratio_rescue = min_ratio_rescue,
+                                     orphan_frac = orphan_frac,
+                                     min_cells = min_cells_construct,
+                                     rescue_constructs = rescue_constructs)
   }
 
   assign_result <- if (strategy == 1L)
@@ -251,7 +293,16 @@ ciri_step01_assignment <- function(data_dir,
     paste("Strategy (arms)   :", strategy),
     paste("Variable guides   :", variable_guides,
           if (variable_guides == 1L) "(Mode 1: one guide per arm)"
-          else "(Mode 2: A/B pair per arm)"),
+          else if (!rescue_orphans) "(Mode 2: A/B pair per arm)"
+          else "(Mode 2 + orphan rescue)"),
+    paste("Orphan rescue     :", if (rescue_orphans)
+            paste0("ON (orphan_frac = ", orphan_frac, ", min_umi_rescue = ",
+                   min_umi_rescue, ", min_ratio_rescue = ", min_ratio_rescue,
+                   ", constructs = ",
+                   if (is.null(rescue_constructs)) "all orphans" else
+                     paste(rescue_constructs, collapse = "/"),
+                   "); single-guide calls are those without ';'")
+          else "OFF"),
     paste("Input             :", if (!is.null(protospacer)) "protospacer_calls_per_cell.csv" else "H5 matrix"),
     paste("Threshold CRISPRa :", thresh_a),
     paste("Threshold CRISPRi :", thresh_i),

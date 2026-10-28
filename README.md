@@ -466,3 +466,24 @@ Step 01. The names in this file match exactly what is in the H5.
 | NAMESPACE multi-line `importFrom` caused silent install failure | One `importFrom` per line |
 | MT-encoded genes survive protein-coding biomaRt filter | `^MT-` genes explicitly removed after filter |
 | `subset()` deprecated in Seurat v5 | Uses `base::subset()` on Seurat object |
+
+## Updating and checking the package source (V5)
+
+Version 0.4.0 corrects guide-name matching and adds optional orphan-guide rescue
+with post-clustering QC; see [NEWS.md](NEWS.md) for details. Rescue remains off by
+default (`rescue_orphans = FALSE`).
+
+Run development commands from the repository root: the directory containing
+`DESCRIPTION`, `R/`, and `tests/`, rather than from an analysis output directory.
+For a new checkout:
+
+```bash
+git clone --branch V5 https://github.com/ebalmas/CIRIseq.git
+cd CIRIseq
+Rscript -e 'devtools::document()'
+Rscript -e 'devtools::test(stop_on_failure = TRUE)'
+```
+
+The V5 branch already includes the 0.4.0 changes. Do not apply the original
+0.4.0 patch again to this updated branch. `NAMESPACE` and `man/` are generated
+from the roxygen comments in `R/`; edit those comments before regenerating.
