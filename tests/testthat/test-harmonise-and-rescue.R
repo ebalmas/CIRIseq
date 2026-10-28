@@ -151,3 +151,67 @@ test_that("harmonisation translates reference ids to matrix guide names", {
   mapping <- read.csv(file.path(tmp, "name_mapping.csv"))
   expect_equal(mapping$cellranger_name, mapping$original_name)
 })
+
+# ---- allow_collapse ---------------------------------------------------------
+
+.fixtures <- function(dir, data_names) {
+  gp <- file.path(dir, "guides.csv"); pp <- file.path(dir, "proto.csv")
+  utils::write.table(data.frame(f = c("G_1A", "G_1B", "FIX"), t = "a",
+                                x = c("v", "v", "f")),
+                     gp, sep = ",", row.names = FALSE, col.names = FALSE, quote = FALSE)
+  utils::write.csv(data.frame(cell_barcode = "c1", num_features = 1,
+                              feature_call = paste(data_names, collapse = "|")),
+                   pp, row.names = FALSE)
+  list(guides = gp, proto = pp, out = file.path(dir, "out.csv"))
+}
+
+test_that("without an authoritative name source the collapse is refused", {
+  d <- withr::local_tempdir(); f <- .fixtures(d, c("G_1", "FIX"))
+  # "G_1" could be a collapsed name or the id of a different guide - unknowable
+  expect_error(
+    suppressMessages(ciri_harmonise_guides(f$guides, f$proto, f$out)),
+    "cannot be verified")
+})
+
+test_that("allow_collapse = TRUE overrides the refusal", {
+  d <- withr::local_tempdir(); f <- .fixtures(d, c("G_1", "FIX"))
+  out <- suppressMessages(ciri_harmonise_guides(f$guides, f$proto, f$out,
+                                                allow_collapse = TRUE))
+  expect_false(any(grepl("_[0-9]+[AB]$", out$feature)))
+})
+
+test_that("a feature reference makes the collapsed case proceed with a warning", {
+  d <- withr::local_tempdir(); f <- .fixtures(d, c("G_1", "FIX"))
+  fr <- file.path(d, "fref.csv")
+  utils::write.csv(data.frame(id = c("G_1", "FIX"), name = c("G_1", "FIX")),
+                   fr, row.names = FALSE)
+  msgs <- character(0)
+  out <- withCallingHandlers(
+    ciri_harmonise_guides(f$guides, f$proto, f$out, feature_reference_path = fr),
+    message = function(m) { msgs <<- c(msgs, conditionMessage(m)); invokeRestart("muffleMessage") })
+  expect_true(any(grepl("would be collapsed", msgs)))
+  expect_equal(nrow(out), 2)
+})
+
+test_that("a matrix that resolves A and B errors instead of collapsing", {
+  d <- withr::local_tempdir(); f <- .fixtures(d, c("G_1A", "G_1B", "G_1", "FIX"))
+  fr <- file.path(d, "fref.csv")
+  utils::write.csv(data.frame(id = c("G_1A", "G_1B", "G_1", "FIX"),
+                              name = c("G_1A", "G_1B", "G_1", "FIX")),
+                   fr, row.names = FALSE)
+  # both A and B resolve exactly, so nothing is collapsed and it completes
+  out <- suppressMessages(ciri_harmonise_guides(f$guides, f$proto, f$out,
+                                                feature_reference_path = fr))
+  expect_true(all(c("G_1A", "G_1B") %in% out$feature))
+})
+
+test_that("guides absent from the data are not counted as collapsed", {
+  d <- withr::local_tempdir(); f <- .fixtures(d, c("G_1A", "G_1B", "FIX"))
+  fr <- file.path(d, "fref.csv")
+  utils::write.csv(data.frame(id = c("G_1A", "G_1B", "FIX"),
+                              name = c("G_1A", "G_1B", "FIX")),
+                   fr, row.names = FALSE)
+  out <- suppressMessages(ciri_harmonise_guides(f$guides, f$proto, f$out,
+                                                feature_reference_path = fr))
+  expect_equal(sum(grepl("_[0-9]+[AB]$", out$feature)), 2)
+})

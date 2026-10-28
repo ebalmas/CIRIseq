@@ -44,9 +44,23 @@
 #'   most reliable option and takes precedence over
 #'   \code{feature_reference_path}. Requires \pkg{hdf5r}.
 #' @param allow_collapse Controls what happens when A/B replicate names would be
-#'   collapsed. \code{NA} (default) decides from the data: an error if the matrix
-#'   resolves A and B as separate features, a warning otherwise. \code{TRUE}
-#'   always collapses, \code{FALSE} always errors.
+#'   collapsed. The check only fires when the guide list actually contains A/B
+#'   names and at least one of them matched onto a non-A/B feature; otherwise
+#'   this argument is irrelevant.
+#'   \code{NA} (default) decides from the data, in three cases:
+#'   \itemize{
+#'     \item the names being matched contain A/B - the matrix resolves the two
+#'       guides separately, so collapsing is wrong: \strong{error}.
+#'     \item they do not, and they come from an authoritative source
+#'       (\code{matrix_path} or \code{feature_reference_path}) - this is the
+#'       genuinely collapsed reference harmonisation exists for:
+#'       \strong{warning}, and it proceeds.
+#'     \item they do not, and there is no authoritative source - the protospacer
+#'       \code{id}s of a multi-guide reference are indistinguishable from
+#'       collapsed A/B names, so the situation cannot be told apart:
+#'       \strong{error}, asking for \code{matrix_path}.
+#'   }
+#'   \code{TRUE} always collapses (with a warning), \code{FALSE} always errors.
 #'
 #' @return Invisibly returns the harmonised guides \code{data.frame}.
 #'   Side effects: writes \code{guides_harmonised.csv} and
@@ -199,11 +213,24 @@ ciri_harmonise_guides <- function(guides_path,
   # On a matrix that resolves A and B separately it removes exactly the
   # information Mode 2 (variable_guides = 2) needs, and the failure downstream is
   # an unhelpful "needs a guides CSV whose names still end in A/B".
+  # Count only guides that MATCHED onto a non-A/B name. A guide that matched
+  # nothing is excluded (it is simply absent from the data, e.g. a construct that
+  # was never detected) - counting those as "collapsed" made the message wrong.
   ab_in_guides <- sum(grepl("_[0-9]+[AB]$", guides$feature))
-  ab_kept      <- sum(grepl("_[0-9]+[AB]$", matched$cellranger_name))
-  if (ab_in_guides > 0 && ab_kept < ab_in_guides) {
-    msg <- paste0(ab_in_guides - ab_kept, " of ", ab_in_guides,
-                  " A/B guide names would be collapsed")
+  collapsed    <- matched$feature[grepl("_[0-9]+[AB]$", matched$feature) &
+                                    !grepl("_[0-9]+[AB]$", matched$cellranger_name)]
+  if (length(collapsed) > 0) {
+    msg <- paste0(length(collapsed), " of ", ab_in_guides,
+                  " A/B guide names would be collapsed (e.g. ",
+                  paste(utils::head(collapsed, 2), collapse = ", "), ")")
+
+    # Can we actually tell whether the matrix collapsed these, or are we just
+    # looking at ids? Without matrix_path or feature_reference_path we cannot,
+    # and the protospacer ids of a 4-guides-per-gene reference look EXACTLY like
+    # collapsed A/B names - which is how the pre-0.4.0 bug went unnoticed. Refuse
+    # to guess rather than warn and proceed.
+    authoritative <- !is.null(matrix_path) || !is.null(id2name)
+
     if (isTRUE(allow_collapse)) {
       log_warn(msg, " - proceeding because allow_collapse = TRUE")
     } else if (identical(allow_collapse, FALSE)) {
@@ -216,6 +243,15 @@ ciri_harmonise_guides <- function(guides_path,
            "variable_guides = 2 impossible: pass the guides CSV to ",
            "ciri_step01_assignment() unchanged. Set allow_collapse = TRUE to ",
            "override.", call. = FALSE)
+    } else if (!authoritative) {
+      stop(msg, ", and it cannot be verified whether the matrix really ",
+           "collapsed them: the names being matched come from the protospacer ",
+           "CSV, which reports the feature reference's `id` column. A reference ",
+           "with several guides per gene numbers its ids GENE_1, GENE_2, ... , ",
+           "which is indistinguishable from collapsed A/B names. Pass ",
+           "matrix_path (preferred) or feature_reference_path so the comparison ",
+           "uses the real feature names, or set allow_collapse = TRUE if you ",
+           "are certain the collapse is correct.", call. = FALSE)
     } else {
       log_warn(msg, " - the matrix has no A/B names, so this is the collapsed ",
                "case harmonisation exists for. variable_guides = 2 will not be ",

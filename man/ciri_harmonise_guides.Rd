@@ -38,9 +38,23 @@ most reliable option and takes precedence over
 \code{feature_reference_path}. Requires \pkg{hdf5r}.}
 
 \item{allow_collapse}{Controls what happens when A/B replicate names would be
-collapsed. \code{NA} (default) decides from the data: an error if the matrix
-resolves A and B as separate features, a warning otherwise. \code{TRUE}
-always collapses, \code{FALSE} always errors.}
+collapsed. The check only fires when the guide list actually contains A/B
+names and at least one of them matched onto a non-A/B feature; otherwise
+this argument is irrelevant.
+\code{NA} (default) decides from the data, in three cases:
+\itemize{
+  \item the names being matched contain A/B - the matrix resolves the two
+    guides separately, so collapsing is wrong: \strong{error}.
+  \item they do not, and they come from an authoritative source
+    (\code{matrix_path} or \code{feature_reference_path}) - this is the
+    genuinely collapsed reference harmonisation exists for:
+    \strong{warning}, and it proceeds.
+  \item they do not, and there is no authoritative source - the protospacer
+    \code{id}s of a multi-guide reference are indistinguishable from
+    collapsed A/B names, so the situation cannot be told apart:
+    \strong{error}, asking for \code{matrix_path}.
+}
+\code{TRUE} always collapses (with a warning), \code{FALSE} always errors.}
 }
 \value{
 Invisibly returns the harmonised guides \code{data.frame}.

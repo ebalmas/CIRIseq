@@ -1,7 +1,7 @@
 Package: CIRI
 Type: Package
 Title: CIRI CRISPR Screen Analysis Pipeline
-Version: 0.4.0
+Version: 0.4.1
 Authors@R: c(
     person("Alessandro", "Bertero", role = c("aut")),
     person("Maria Luisa", "Ratto",  role = c("aut", "cre"),
@@ -44,4 +44,5 @@ Suggests:
     BiocManager,
     remotes,
     devtools,
-    testthat
+    testthat,
+    withr

@@ -1,3 +1,36 @@
+# CIRI 0.4.1
+
+Two defects in the 0.4.0 collapse guard, both found by running the published
+0.4.0 on AB014's real files rather than on fixtures.
+
+* **The guard could not fire on the call that needed it.** `allow_collapse = NA`
+  decided by looking for A/B names among the names being matched. Without
+  `matrix_path` or `feature_reference_path` those names come from the
+  protospacer CSV, i.e. the reference's `id` column, which for a multi-guide
+  reference reads `GENE_1`, `GENE_2`, ... and contains no A/B at all. The guard
+  concluded "already collapsed", warned, and collapsed anyway - the exact
+  outcome 0.4.0 was written to prevent. On AB014 a bare
+  `ciri_harmonise_guides(guides_2.csv, protospacer_calls_per_cell.csv)` still
+  returned 30 rows with no A/B names left.
+
+  `NA` now distinguishes three cases: A/B present among the matched names ->
+  error; absent, with an authoritative source (`matrix_path` or
+  `feature_reference_path`) -> warning and proceed, the genuinely collapsed
+  reference; absent, with no authoritative source -> **error**, because the two
+  cannot be told apart. `allow_collapse = TRUE` still overrides.
+
+* **Undetected guides were counted as collapsed.** The guard compared the count
+  of A/B names in the guide list against those surviving in the output, so a
+  guide that matched *nothing* - a construct not detected in the experiment -
+  counted as collapsed. On AB014 with `feature_reference_path` this produced a
+  spurious error about "3 of 52" that referred to the three undetected MEF2C
+  guides. The count is now taken over guides that matched onto a non-A/B name.
+
+Verified on AB014: the bare call errors; `matrix_path` completes with 57 rows
+and all 52 A/B names kept; `feature_reference_path` completes with 54 rows and
+49 A/B names, the three missing being exactly the undetected MEF2C guides; a
+genuinely collapsed reference still collapses with a warning.
+
 # CIRI 0.4.0
 
 ## Guide-name harmonisation: correctness fix
